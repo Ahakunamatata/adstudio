@@ -1,0 +1,1476 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ad Studio Prototype</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="rail" aria-label="Primary navigation">
+        <div class="brand-mark">AS</div>
+        <button class="rail-btn is-active" data-route="home" aria-label="Home">
+          <span class="icon">⌂</span>
+          <span>Home</span>
+        </button>
+        <button class="rail-btn" data-route="agent" aria-label="Agent">
+          <span class="icon">✦</span>
+          <span>Agent</span>
+        </button>
+        <button class="rail-btn" data-route="video" aria-label="Ad Video">
+          <span class="icon">▣</span>
+          <span>Video</span>
+        </button>
+        <button class="rail-btn" data-route="image" aria-label="Ad Image">
+          <span class="icon">▧</span>
+          <span>Image</span>
+        </button>
+        <button class="rail-btn" data-route="templates" aria-label="Templates">
+          <span class="icon">◇</span>
+          <span>Templates</span>
+        </button>
+        <button class="rail-btn" data-route="assets" aria-label="Assets">
+          <span class="icon">▤</span>
+          <span>Assets</span>
+        </button>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <div class="eyebrow">AI Ad Production Studio</div>
+            <h1 id="page-title">Ad Studio</h1>
+          </div>
+          <div class="topbar-actions">
+            <button class="ghost-btn" data-route="assets">产品包资产</button>
+            <button class="primary-btn" data-entry="clone">复刻竞品广告</button>
+          </div>
+        </header>
+
+        <section id="home" class="view is-active" aria-label="Home">
+          <section class="hero-band agent-hub">
+            <div class="launcher-tabs" aria-label="Create mode">
+              <button class="launcher-tab is-active" data-launcher-mode="agent" type="button">
+                <span class="mode-icon icon-agent" aria-hidden="true"></span>
+                <strong>Agent</strong>
+              </button>
+              <button class="launcher-tab" data-launcher-mode="video" type="button">
+                <span class="mode-icon icon-video" aria-hidden="true"></span>
+                <strong>Video</strong>
+              </button>
+              <button class="launcher-tab" data-launcher-mode="image" type="button">
+                <span class="mode-icon icon-image" aria-hidden="true"></span>
+                <strong>Image</strong>
+              </button>
+            </div>
+
+            <div class="launcher-card">
+              <div class="launcher-title-row">
+                <div>
+                  <div class="status-row">
+                    <span class="status-dot"></span>
+                    <span id="launcher-kicker">Agent + Canvas</span>
+                  </div>
+                  <h2 id="launcher-title">从竞品素材到可投放广告视频</h2>
+                </div>
+                <span class="cost-pill" id="launcher-pill">深度工作流</span>
+              </div>
+
+              <div class="launcher-input-shell">
+                <div class="launcher-main-area">
+                  <div class="launcher-assets" id="launcher-assets">
+                    <button class="asset-slot product-slot" type="button">
+                      <span class="slot-icon">FL</span>
+                      <strong>产品包</strong>
+                      <small>Family Locator</small>
+                    </button>
+                    <button class="asset-slot competitor-slot" id="competitor-slot" type="button">
+                      <span class="slot-icon add-icon">+</span>
+                      <strong>竞品素材</strong>
+                      <small>图片 / 视频</small>
+                    </button>
+                    <button class="asset-slot optional-slot" type="button">
+                      <span class="slot-icon ref-icon"></span>
+                      <strong>参考素材</strong>
+                      <small>可选</small>
+                    </button>
+                  </div>
+
+                  <div class="launcher-prompt-area">
+                    <textarea id="launcher-prompt" aria-label="Task prompt" placeholder="请上传你要复刻的竞品广告素材，并说明你想复刻的内容、重点和需要避开的地方。"></textarea>
+                  </div>
+                </div>
+
+                <div class="launcher-controls">
+                  <div class="launcher-chips">
+                    <div class="type-picker" id="agent-type-picker">
+                      <button class="control-chip type-trigger" id="agent-type-trigger" type="button">
+                        <span class="chip-icon icon-agent-mini" aria-hidden="true"></span>
+                        <span id="agent-type-label">复刻广告</span>
+                        <span class="chevron">⌄</span>
+                      </button>
+                      <div class="type-menu" id="agent-type-menu" hidden>
+                        <button data-agent-mode="clone" type="button">
+                          <strong>复刻广告</strong>
+                          <small>拆解竞品，再迁移到你的产品</small>
+                        </button>
+                        <button data-agent-mode="create" type="button">
+                          <strong>创作广告</strong>
+                          <small>从产品包推导新广告方向</small>
+                        </button>
+                      </div>
+                    </div>
+                    <button class="control-chip" type="button">泰国 / 泰语</button>
+                    <button class="control-chip" type="button">TikTok</button>
+                    <button class="control-chip" type="button">9:16</button>
+                    <button class="control-chip" type="button">15s</button>
+                    <button class="control-chip settings-chip" type="button" aria-label="高级选项">⌘</button>
+                  </div>
+                  <div class="launcher-right-actions">
+                    <span class="launcher-credit">✦ 0</span>
+                    <button class="launcher-send" id="launcher-cta" type="button" aria-label="创建复刻任务" title="创建复刻任务">
+                      <span>↑</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="agent-proof">
+              <div class="section-head">
+                <div>
+                  <h3>Agent 项目示例</h3>
+                </div>
+              </div>
+              <div class="example-row">
+                <article class="example-card">
+                  <div class="example-preview">
+                    <span>Family Locator</span>
+                    <div class="mini-node n1"></div>
+                    <div class="mini-node n2"></div>
+                    <div class="mini-node n3"></div>
+                  </div>
+                  <h4>泰语安全焦虑广告</h4>
+                  <p>竞品复刻 · 4 个分镜视频 · App UI 锚点</p>
+                </article>
+                <article class="example-card">
+                  <div class="example-preview ecommerce">
+                    <span>Baby Bottle</span>
+                    <div class="mini-node n2"></div>
+                    <div class="mini-node n1"></div>
+                    <div class="mini-node n3"></div>
+                  </div>
+                  <h4>商品演示广告</h4>
+                  <p>模板预填 · 产品图替换 · UGC 口播</p>
+                </article>
+                <article class="example-card">
+                  <div class="example-preview game">
+                    <span>Mobile Game</span>
+                    <div class="mini-node n3"></div>
+                    <div class="mini-node n1"></div>
+                    <div class="mini-node n2"></div>
+                  </div>
+                  <h4>游戏试玩短视频</h4>
+                  <p>从 0 创意 · 钩子测试 · 结尾 CTA</p>
+                </article>
+                <article class="example-card">
+                  <div class="example-preview skincare">
+                    <span>Skincare Serum</span>
+                  </div>
+                  <h4>护肤品测评广告</h4>
+                  <p>复刻广告 · 前后对比 · 证言脚本</p>
+                </article>
+                <article class="example-card">
+                  <div class="example-preview local">
+                    <span>Local Service</span>
+                  </div>
+                  <h4>本地服务预约广告</h4>
+                  <p>从 0 创意 · 痛点放大 · 表单 CTA</p>
+                </article>
+              </div>
+            </div>
+          </section>
+
+          <section class="section-band template-showcase" id="home-templates">
+            <div class="section-head">
+              <div>
+                <h3>模板区</h3>
+                <p>给“不知道做什么”的用户先找方向，再进入 Ad Video / Ad Image 表单。</p>
+              </div>
+              <button class="ghost-btn" data-route="templates">查看全部</button>
+            </div>
+            <div class="filter-row template-tabs" aria-label="模板顶部分类">
+              <button class="chip is-selected" type="button" data-template-jump="tiktok">TikTok Ads</button>
+              <button class="chip" type="button" data-template-jump="youtube">YouTube Shorts</button>
+              <button class="chip" type="button" data-template-jump="app">App</button>
+              <button class="chip" type="button" data-template-jump="ecommerce">Ecommerce</button>
+              <button class="chip" type="button" data-template-jump="ugc">UGC</button>
+              <button class="chip" type="button" data-template-jump="viral">Viral Hook</button>
+            </div>
+            <div class="template-browser">
+              <div class="template-category-list">
+                <section class="template-category" id="template-cat-tiktok" data-template-category="tiktok">
+                  <div class="template-category-head">
+                    <h4>TikTok Ads</h4>
+                    <span>高强度开场与移动端转化模板</span>
+                  </div>
+                  <div class="template-grid">
+                    <article class="template-card" data-template="tiktok-app">
+                      <div class="thumb thumb-app">
+                        <div class="phone-mock"></div>
+                        <div class="cutline">APP ALERT</div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>9:16 · 15s</span>
+                      </div>
+                      <h4>TikTok App 危机 Hook</h4>
+                    </article>
+                    <article class="template-card" data-template="ugc-product">
+                      <div class="thumb thumb-kitchen">
+                        <div class="person-mock"></div>
+                        <div class="product-mock"></div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>UGC · 14s</span>
+                      </div>
+                      <h4>三秒痛点商品演示</h4>
+                    </article>
+                    <article class="template-card" data-template="gameplay">
+                      <div class="thumb thumb-game">
+                        <div class="game-grid"></div>
+                        <div class="score-mock">LV 12</div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>试玩 Hook</span>
+                      </div>
+                      <h4>手游试玩快节奏开场</h4>
+                    </article>
+                    <article class="template-card" data-template="image-demo">
+                      <div class="thumb thumb-image">
+                        <div class="packshot"></div>
+                        <div class="badge-mock">SALE</div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Image</span>
+                        <span>4:5</span>
+                      </div>
+                      <h4>TikTok Shop 促销主图</h4>
+                    </article>
+                  </div>
+                </section>
+
+                <section class="template-category" id="template-cat-youtube" data-template-category="youtube">
+                  <div class="template-category-head">
+                    <h4>YouTube Shorts</h4>
+                    <span>评测、对比和讲解型短视频</span>
+                  </div>
+                  <div class="template-grid">
+                    <article class="template-card" data-template="youtube-review">
+                      <div class="thumb thumb-review">
+                        <div class="review-window"></div>
+                        <div class="play-mock">▶</div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>Review</span>
+                      </div>
+                      <h4>评测对比短视频</h4>
+                    </article>
+                    <article class="template-card" data-template="avatar">
+                      <div class="thumb thumb-avatar">
+                        <div class="avatar-mock"></div>
+                        <div class="caption-lines"></div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>数字人</span>
+                      </div>
+                      <h4>创作者口播讲解</h4>
+                    </article>
+                    <article class="template-card" data-template="ugc-product">
+                      <div class="thumb thumb-kitchen">
+                        <div class="person-mock"></div>
+                        <div class="product-mock"></div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>Demo</span>
+                      </div>
+                      <h4>真实使用前后对比</h4>
+                    </article>
+                    <article class="template-card" data-template="tiktok-app">
+                      <div class="thumb thumb-app">
+                        <div class="phone-mock"></div>
+                        <div class="cutline">APP ALERT</div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>Shorts · 15s</span>
+                      </div>
+                      <h4>App 场景故事开场</h4>
+                    </article>
+                  </div>
+                </section>
+
+                <section class="template-category" id="template-cat-app" data-template-category="app">
+                  <div class="template-category-head">
+                    <h4>App</h4>
+                    <span>功能展示、问题触发和下载转化</span>
+                  </div>
+                  <div class="template-grid">
+                    <article class="template-card" data-template="tiktok-app">
+                      <div class="thumb thumb-app">
+                        <div class="phone-mock"></div>
+                        <div class="cutline">APP ALERT</div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>Problem · Solution</span>
+                      </div>
+                      <h4>家庭定位安全焦虑</h4>
+                    </article>
+                    <article class="template-card" data-template="avatar">
+                      <div class="thumb thumb-avatar">
+                        <div class="avatar-mock"></div>
+                        <div class="caption-lines"></div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>Explainer</span>
+                      </div>
+                      <h4>App 功能口播</h4>
+                    </article>
+                    <article class="template-card" data-template="youtube-review">
+                      <div class="thumb thumb-review">
+                        <div class="review-window"></div>
+                        <div class="play-mock">▶</div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>Comparison</span>
+                      </div>
+                      <h4>旧方法 vs 新 App</h4>
+                    </article>
+                    <article class="template-card" data-template="image-demo">
+                      <div class="thumb thumb-image">
+                        <div class="packshot"></div>
+                        <div class="badge-mock">APP</div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Image</span>
+                        <span>Install CTA</span>
+                      </div>
+                      <h4>应用商店投放图</h4>
+                    </article>
+                  </div>
+                </section>
+
+                <section class="template-category" id="template-cat-ecommerce" data-template-category="ecommerce">
+                  <div class="template-category-head">
+                    <h4>Ecommerce</h4>
+                    <span>产品卖点、促销主图和商品演示</span>
+                  </div>
+                  <div class="template-grid">
+                    <article class="template-card" data-template="image-demo">
+                      <div class="thumb thumb-image">
+                        <div class="packshot"></div>
+                        <div class="badge-mock">SALE</div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Image</span>
+                        <span>4:5</span>
+                      </div>
+                      <h4>电商产品主图</h4>
+                    </article>
+                    <article class="template-card" data-template="ugc-product">
+                      <div class="thumb thumb-kitchen">
+                        <div class="person-mock"></div>
+                        <div class="product-mock"></div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>UGC · 14s</span>
+                      </div>
+                      <h4>商品演示 UGC</h4>
+                    </article>
+                    <article class="template-card" data-template="youtube-review">
+                      <div class="thumb thumb-review">
+                        <div class="review-window"></div>
+                        <div class="play-mock">▶</div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>Proof</span>
+                      </div>
+                      <h4>买前评测对比</h4>
+                    </article>
+                    <article class="template-card" data-template="tiktok-app">
+                      <div class="thumb thumb-app">
+                        <div class="phone-mock"></div>
+                        <div class="cutline">FLASH DEAL</div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>Offer</span>
+                      </div>
+                      <h4>限时优惠快闪视频</h4>
+                    </article>
+                  </div>
+                </section>
+
+                <section class="template-category" id="template-cat-ugc" data-template-category="ugc">
+                  <div class="template-category-head">
+                    <h4>UGC</h4>
+                    <span>自然口播、真实体验和生活场景</span>
+                  </div>
+                  <div class="template-grid">
+                    <article class="template-card" data-template="ugc-product">
+                      <div class="thumb thumb-kitchen">
+                        <div class="person-mock"></div>
+                        <div class="product-mock"></div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>Home Demo</span>
+                      </div>
+                      <h4>居家一镜到底演示</h4>
+                    </article>
+                    <article class="template-card" data-template="youtube-review">
+                      <div class="thumb thumb-review">
+                        <div class="review-window"></div>
+                        <div class="play-mock">▶</div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>Testimonial</span>
+                      </div>
+                      <h4>用户证言对比</h4>
+                    </article>
+                    <article class="template-card" data-template="avatar">
+                      <div class="thumb thumb-avatar">
+                        <div class="avatar-mock"></div>
+                        <div class="caption-lines"></div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>Talking Head</span>
+                      </div>
+                      <h4>创作者三点推荐</h4>
+                    </article>
+                    <article class="template-card" data-template="image-demo">
+                      <div class="thumb thumb-image">
+                        <div class="packshot"></div>
+                        <div class="badge-mock">UGC</div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Image</span>
+                        <span>Social Proof</span>
+                      </div>
+                      <h4>口碑截图式主图</h4>
+                    </article>
+                  </div>
+                </section>
+
+                <section class="template-category" id="template-cat-viral" data-template-category="viral">
+                  <div class="template-category-head">
+                    <h4>Viral Hook</h4>
+                    <span>强钩子、反差开场和高分享素材</span>
+                  </div>
+                  <div class="template-grid">
+                    <article class="template-card" data-template="gameplay">
+                      <div class="thumb thumb-game">
+                        <div class="game-grid"></div>
+                        <div class="score-mock">LV 12</div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>Challenge</span>
+                      </div>
+                      <h4>挑战失败反转 Hook</h4>
+                    </article>
+                    <article class="template-card" data-template="tiktok-app">
+                      <div class="thumb thumb-app">
+                        <div class="phone-mock"></div>
+                        <div class="cutline">WAIT</div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>Shock Opener</span>
+                      </div>
+                      <h4>问题突然发生开场</h4>
+                    </article>
+                    <article class="template-card" data-template="ugc-product">
+                      <div class="thumb thumb-kitchen">
+                        <div class="person-mock"></div>
+                        <div class="product-mock"></div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>Before / After</span>
+                      </div>
+                      <h4>真实前后反差演示</h4>
+                    </article>
+                    <article class="template-card" data-template="youtube-review">
+                      <div class="thumb thumb-review">
+                        <div class="review-window"></div>
+                        <div class="play-mock">▶</div>
+                      </div>
+                      <div class="card-meta">
+                        <span>Ad Video</span>
+                        <span>Hot Take</span>
+                      </div>
+                      <h4>一句话观点引爆</h4>
+                    </article>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section id="agent" class="view" aria-label="Agent entry">
+          <section class="section-band agent-page-shell">
+            <div class="launcher-card agent-page-launcher">
+              <div class="launcher-title-row">
+                <div>
+                  <div class="status-row">
+                    <span class="status-dot"></span>
+                    <span id="agent-page-kicker">Agent + Canvas</span>
+                  </div>
+                  <h2 id="agent-page-title">从竞品素材到可投放广告视频</h2>
+                </div>
+              </div>
+
+              <div class="launcher-input-shell">
+                <div class="launcher-main-area">
+                  <div class="launcher-assets">
+                    <button class="asset-slot" type="button">
+                      <span class="slot-icon">FL</span>
+                      <strong>产品包</strong>
+                      <small>Family Locator</small>
+                    </button>
+                    <button class="asset-slot" id="agent-page-competitor-slot" type="button">
+                      <span class="slot-icon add-icon">+</span>
+                      <strong>竞品素材</strong>
+                      <small>图片 / 视频</small>
+                    </button>
+                    <button class="asset-slot" id="agent-page-ref-slot" type="button">
+                      <span class="slot-icon ref-icon"></span>
+                      <strong>参考素材</strong>
+                      <small>可选</small>
+                    </button>
+                  </div>
+
+                  <div class="launcher-prompt-area">
+                    <textarea id="agent-page-prompt" aria-label="Agent task prompt" placeholder="请上传你要复刻的竞品广告素材，并说明你想复刻的内容、重点和需要避开的地方。"></textarea>
+                  </div>
+                </div>
+
+                <div class="launcher-controls">
+                  <div class="launcher-chips">
+                    <div class="type-picker" id="agent-page-type-picker">
+                      <button class="control-chip type-trigger" id="agent-page-type-trigger" type="button">
+                        <span class="chip-icon icon-agent-mini" aria-hidden="true"></span>
+                        <span id="agent-page-type-label">复刻广告</span>
+                        <span class="chevron">⌄</span>
+                      </button>
+                      <div class="type-menu" id="agent-page-type-menu" hidden>
+                        <button data-agent-page-mode="clone" type="button">
+                          <strong>复刻广告</strong>
+                          <small>拆解竞品，再迁移到你的产品</small>
+                        </button>
+                        <button data-agent-page-mode="create" type="button">
+                          <strong>创作广告</strong>
+                          <small>从产品包推导新广告方向</small>
+                        </button>
+                      </div>
+                    </div>
+                    <button class="control-chip" type="button">泰国 / 泰语</button>
+                    <button class="control-chip" type="button">TikTok</button>
+                    <button class="control-chip" type="button">9:16</button>
+                    <button class="control-chip" type="button">15s</button>
+                    <button class="control-chip settings-chip" type="button" aria-label="高级选项">⌘</button>
+                  </div>
+                  <div class="launcher-right-actions">
+                    <span class="launcher-credit">✦ 0</span>
+                    <button class="launcher-send" id="agent-page-cta" type="button" aria-label="创建复刻任务" title="创建复刻任务">
+                      <span>↑</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <section class="agent-projects-block">
+              <div class="section-head">
+                <div>
+                  <h3>我的项目</h3>
+                  <p>继续历史 Agent 项目，进入后会回到对应工作台和画布状态。</p>
+                </div>
+              </div>
+              <div class="project-row">
+                <button class="project-card" data-route="workbench">
+                  <span class="project-status">进行中</span>
+                  <strong>Family Locator 泰语广告</strong>
+                  <small>复刻广告 · 脚本已确认 · 等待分镜视频</small>
+                </button>
+                <button class="project-card" data-route="workbench">
+                  <span class="project-status muted">草稿</span>
+                  <strong>Baby Bottle UGC 演示</strong>
+                  <small>创作广告 · 已生成 3 个方向</small>
+                </button>
+                <button class="project-card" data-route="workbench">
+                  <span class="project-status done">已完成</span>
+                  <strong>Mobile Game Hook 测试</strong>
+                  <small>5 条视频版本 · 可继续分支</small>
+                </button>
+              </div>
+            </section>
+
+            <section class="agent-projects-block">
+              <div class="section-head">
+                <div>
+                  <h3>示例 Agent 项目</h3>
+                  <p>参考完整工作流结果：对话决策、画布节点、最终视频。</p>
+                </div>
+              </div>
+              <div class="example-row">
+                <article class="example-card">
+                  <div class="example-preview"><span>Family Locator</span></div>
+                  <h4>泰语安全焦虑广告</h4>
+                  <p>竞品复刻 · 4 个分镜视频 · App UI 锚点</p>
+                </article>
+                <article class="example-card">
+                  <div class="example-preview ecommerce"><span>Baby Bottle</span></div>
+                  <h4>商品演示广告</h4>
+                  <p>模板预填 · 产品图替换 · UGC 口播</p>
+                </article>
+                <article class="example-card">
+                  <div class="example-preview game"><span>Mobile Game</span></div>
+                  <h4>游戏试玩短视频</h4>
+                  <p>从 0 创意 · 钩子测试 · 结尾 CTA</p>
+                </article>
+                <article class="example-card">
+                  <div class="example-preview skincare"><span>Skincare Serum</span></div>
+                  <h4>护肤品测评广告</h4>
+                  <p>复刻广告 · 前后对比 · 证言脚本</p>
+                </article>
+                <article class="example-card">
+                  <div class="example-preview local"><span>Local Service</span></div>
+                  <h4>本地服务预约广告</h4>
+                  <p>从 0 创意 · 痛点放大 · 表单 CTA</p>
+                </article>
+              </div>
+            </section>
+          </section>
+        </section>
+
+        <section id="agent-setup" class="view" aria-label="Agent setup">
+          <div class="setup-layout">
+            <aside class="setup-sidebar">
+              <span class="entry-tag" id="setup-mode-label">Agent Clone</span>
+              <h2 id="setup-title">创建竞品复刻任务</h2>
+              <p class="setup-intro" id="setup-intro">先把产品、竞品素材、解析重点和输出规格锁定，Agent 才会进入工作台开始拆解和复刻。</p>
+
+              <div class="task-summary">
+                <span class="summary-title">本次任务</span>
+                <div class="summary-row">
+                  <span>产品</span>
+                  <strong id="summary-product">Family Locator</strong>
+                </div>
+                <div class="summary-row clone-summary">
+                  <span>竞品素材</span>
+                  <strong id="summary-competitor">待上传</strong>
+                </div>
+                <div class="summary-row clone-summary">
+                  <span>重点解析</span>
+                  <strong id="summary-focus">Hook、脚本逻辑</strong>
+                </div>
+                <div class="summary-row create-summary" hidden>
+                  <span>创意目标</span>
+                  <strong id="summary-creative">让 Agent 先给方向</strong>
+                </div>
+                <div class="summary-row">
+                  <span>输出规格</span>
+                  <strong id="summary-specs">泰语 / TikTok / 9:16 / 15s</strong>
+                </div>
+              </div>
+
+              <ol class="setup-steps" id="setup-steps">
+                <li data-wizard-step="product" class="is-current">选择产品</li>
+                <li data-wizard-step="competitor">上传竞品</li>
+                <li data-wizard-step="focus">选择解析重点</li>
+                <li data-wizard-step="creative" hidden>输入创作目标</li>
+                <li data-wizard-step="specs">输出规格</li>
+                <li data-wizard-step="confirm">确认任务</li>
+              </ol>
+            </aside>
+
+            <div class="setup-panel wizard-panel">
+              <div class="wizard-header">
+                <div>
+                  <span class="entry-tag" id="wizard-count">Step 1 / 5</span>
+                  <h3 id="wizard-step-title">选择你的产品</h3>
+                  <p id="wizard-step-copy">Agent 会基于产品包理解你的卖点、用户和痛点，后面复刻时不能偏离这个上下文。</p>
+                </div>
+                <span class="cost-pill" id="wizard-lock-state">边界锁定 1/5</span>
+              </div>
+
+              <section class="form-section wizard-step is-active" data-step="product">
+                <div class="step-question">
+                  <h3>这次广告要服务哪个产品？</h3>
+                  <p>选择已有产品包，或者输入产品 URL 创建新的产品包。</p>
+                </div>
+                <div class="product-selector">
+                  <button class="product-pack product-choice is-selected" data-product-name="Family Locator">
+                    <div class="product-icon">FL</div>
+                    <div>
+                      <strong>Family Locator</strong>
+                      <small>App · 家庭安全 · 已解析</small>
+                    </div>
+                  </button>
+                  <button class="product-pack product-choice" data-product-name="新产品 URL">
+                    <div class="product-icon alt">+</div>
+                    <div>
+                      <strong>输入产品 URL</strong>
+                      <small>支持 App Store、商品页、官网</small>
+                    </div>
+                  </button>
+                </div>
+                <div class="why-box">
+                  <strong>为什么先选产品？</strong>
+                  <p>后续脚本、画面和 CTA 都会绑定这个产品包。确认后，Agent 不应该擅自创造产品不存在的功能。</p>
+                </div>
+              </section>
+
+              <section class="form-section wizard-step clone-only" data-step="competitor">
+                <div class="step-question">
+                  <h3>上传你想复刻的竞品广告</h3>
+                  <p>支持图片或视频。第一版 Demo 先用占位素材展示流程，后续接真实上传和解析。</p>
+                </div>
+                <button class="upload-box upload-action" data-upload-demo="competitor">
+                  <span class="upload-icon">＋</span>
+                  <strong>上传图片或视频</strong>
+                  <small id="upload-state">还没有上传竞品素材</small>
+                </button>
+                <div class="upload-preview" id="upload-preview" hidden>
+                  <div class="video-thumb"></div>
+                  <div>
+                    <strong>competitor_ad_15s.mp4</strong>
+                    <small>已添加到任务，进入工作台后会成为竞品素材节点。</small>
+                  </div>
+                </div>
+              </section>
+
+              <section class="form-section wizard-step clone-only" data-step="focus">
+                <div class="step-question">
+                  <h3>你最想让 Agent 拆解什么？</h3>
+                  <p>这一步用来避免模型泛泛解析。选择越明确，后面给出的复刻方案越贴近你的判断。</p>
+                </div>
+                <div class="choice-grid">
+                  <label class="analysis-choice is-selected"><input type="checkbox" value="Hook" checked /> <strong>Hook</strong><span>前 3 秒怎么抓人</span></label>
+                  <label class="analysis-choice is-selected"><input type="checkbox" value="脚本逻辑" checked /> <strong>脚本逻辑</strong><span>段落、转折和卖点植入</span></label>
+                  <label class="analysis-choice"><input type="checkbox" value="剧情共鸣" /> <strong>剧情共鸣</strong><span>用户为什么代入</span></label>
+                  <label class="analysis-choice"><input type="checkbox" value="画面构图" /> <strong>画面构图</strong><span>镜头和视觉重心</span></label>
+                  <label class="analysis-choice"><input type="checkbox" value="节奏" /> <strong>节奏</strong><span>剪辑速度和信息密度</span></label>
+                  <label class="analysis-choice"><input type="checkbox" value="CTA" /> <strong>CTA</strong><span>最后如何促成行动</span></label>
+                </div>
+              </section>
+
+              <section class="form-section wizard-step create-only" data-step="creative" hidden>
+                <div class="step-question">
+                  <h3>这条广告想解决什么问题？</h3>
+                  <p>不用写完整脚本，只要告诉 Agent 目标，它会先给多个方向让你选择。</p>
+                </div>
+                <textarea id="creative-goal">我想做一条 TikTok 竖版广告，突出 Family Locator 解决父母担心孩子放学安全的问题，希望开头足够抓人。</textarea>
+                <div class="choice-grid compact">
+                  <button class="analysis-choice is-selected" type="button"><strong>痛点放大型</strong><span>先制造强烈焦虑</span></button>
+                  <button class="analysis-choice" type="button"><strong>生活化 UGC</strong><span>真实用户分享</span></button>
+                  <button class="analysis-choice" type="button"><strong>产品演示型</strong><span>直接展示 App 使用</span></button>
+                </div>
+              </section>
+
+              <section class="form-section wizard-step" data-step="specs">
+                <div class="step-question">
+                  <h3>最终要生成什么规格？</h3>
+                  <p>国家语言会影响脚本和字幕，渠道和比例会影响画面设计，时长会影响脚本密度。</p>
+                </div>
+                <div class="field-grid">
+                  <label>
+                    国家/语言
+                    <select id="spec-language">
+                      <option>泰国 / 泰语</option>
+                      <option>美国 / 英语</option>
+                      <option>日本 / 日语</option>
+                    </select>
+                  </label>
+                  <label>
+                    渠道
+                    <select id="spec-channel">
+                      <option>TikTok</option>
+                      <option>Meta Reels</option>
+                      <option>YouTube Shorts</option>
+                    </select>
+                  </label>
+                  <label>
+                    比例
+                    <select id="spec-ratio">
+                      <option>9:16</option>
+                      <option>1:1</option>
+                      <option>16:9</option>
+                    </select>
+                  </label>
+                  <label>
+                    时长
+                    <select id="spec-duration">
+                      <option>15s</option>
+                      <option>30s</option>
+                      <option>60s</option>
+                    </select>
+                  </label>
+                </div>
+              </section>
+
+              <section class="form-section wizard-step" data-step="confirm">
+                <div class="step-question">
+                  <h3>确认任务边界</h3>
+                  <p>确认后，Agent 会进入工作台。左侧对话负责继续锁定决策，右侧画布会生成节点证据链。</p>
+                </div>
+                <div class="brief-card">
+                  <div class="summary-row"><span>产品</span><strong id="confirm-product">Family Locator</strong></div>
+                  <div class="summary-row clone-summary"><span>竞品素材</span><strong id="confirm-competitor">1 条视频</strong></div>
+                  <div class="summary-row clone-summary"><span>重点解析</span><strong id="confirm-focus">Hook、脚本逻辑</strong></div>
+                  <div class="summary-row create-summary" hidden><span>创意目标</span><strong id="confirm-creative">让 Agent 先给方向</strong></div>
+                  <div class="summary-row"><span>输出规格</span><strong id="confirm-specs">泰语 / TikTok / 9:16 / 15s</strong></div>
+                </div>
+                <div class="next-action-grid">
+                  <article>
+                    <span>1</span>
+                    <strong class="clone-copy">客观拆解竞品素材</strong>
+                    <strong class="create-copy" hidden>生成 3 个创意方向</strong>
+                  </article>
+                  <article>
+                    <span>2</span>
+                    <strong class="clone-copy">检查是否覆盖重点</strong>
+                    <strong class="create-copy" hidden>让你选择广告方向</strong>
+                  </article>
+                  <article>
+                    <span>3</span>
+                    <strong>进入脚本、锚点和分镜生产</strong>
+                  </article>
+                </div>
+              </section>
+
+              <div class="setup-actions">
+                <button class="ghost-btn" data-route="agent">退出</button>
+                <button class="ghost-btn" id="wizard-prev" type="button">上一步</button>
+                <button class="primary-btn" id="wizard-next" type="button">下一步</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="workbench" class="view workbench-view" aria-label="Agent workbench">
+          <div class="studio-shell">
+            <aside class="agent-panel">
+              <div class="agent-head">
+                <div>
+                  <span class="entry-tag">Agent</span>
+                  <h2 id="workbench-title">复刻广告工作台</h2>
+                </div>
+                <span class="cost-pill" id="workbench-cost">Cost 0 cr</span>
+              </div>
+              <div class="phase-list" id="agent-phase-list">
+                <span class="current">产品包确认</span>
+                <span>竞品素材</span>
+                <span>解析重点</span>
+                <span>输出规格</span>
+                <span>任务边界</span>
+              </div>
+              <div class="locked-brief">
+                <span id="workbench-brief-label">需求草稿</span>
+                <strong id="workbench-brief">Family Locator · 竞品复刻 · 待确认边界</strong>
+              </div>
+
+              <div class="chat-stream" id="agent-chat-stream">
+                <article class="message agent-message">
+                  <span class="speaker">创意总监</span>
+                  <p id="workbench-first-message">我会先把需求拆成几步确认，不需要你一次填完所有字段。</p>
+                </article>
+              </div>
+
+              <div class="agent-composer">
+                <button class="square-btn" aria-label="Upload">＋</button>
+                <input id="agent-composer-input" value="可以直接补充或修改当前边界" aria-label="Agent input" />
+                <button class="send-btn">➜</button>
+              </div>
+            </aside>
+
+            <div class="canvas-area">
+              <div class="canvas-toolbar">
+                <div class="canvas-title">
+                  <strong id="canvas-project-title">Family Locator 广告工作流画布</strong>
+                  <span id="canvas-project-subtitle">确认后的边界和生成结果会沉淀为节点。</span>
+                </div>
+                <div class="canvas-actions">
+                  <button class="icon-btn" aria-label="Add text node">T</button>
+                  <button class="icon-btn" aria-label="Add image node">▧</button>
+                  <button class="icon-btn" aria-label="Add video node">▣</button>
+                  <button class="ghost-btn">导出</button>
+                </div>
+              </div>
+
+              <div class="flow-board">
+                <section class="node-group group-product">
+                  <h3>产品核心锚点</h3>
+                  <button class="flow-node text-node" data-node="product-pack">
+                    <span>Text</span>
+                    <strong>产品资料包</strong>
+                    <small>卖点 / 用户画像 / 痛点</small>
+                  </button>
+                  <button class="flow-node image-node" data-node="app-ui">
+                    <span>Image</span>
+                    <strong>App UI 与 Icon</strong>
+                    <small>locked · GPT Image</small>
+                  </button>
+                </section>
+
+                <section class="node-group group-analysis">
+                  <h3>竞品解析与复刻策略</h3>
+                  <button class="flow-node video-node" data-node="competitor-video">
+                    <span>Video</span>
+                    <strong>竞品视频</strong>
+                    <small>15s · uploaded</small>
+                  </button>
+                  <button class="flow-node text-node" data-node="analysis">
+                    <span>Script</span>
+                    <strong>客观拆解</strong>
+                    <small>Gemini · 21s · 6 cr</small>
+                  </button>
+                  <button class="flow-node text-node wide" data-node="clone-plan">
+                    <span>Plan</span>
+                    <strong>迁移复刻方案 A</strong>
+                    <small>等待用户确认</small>
+                  </button>
+                </section>
+
+                <section class="node-group group-assets">
+                  <h3>一致性资产</h3>
+                  <button class="flow-node image-node" data-node="character">
+                    <span>Image</span>
+                    <strong>泰国母亲人物参考</strong>
+                    <small>locked · 18s · 8 cr</small>
+                  </button>
+                  <button class="flow-node image-node" data-node="scene">
+                    <span>Image</span>
+                    <strong>曼谷街景场景</strong>
+                    <small>ready · 16s · 8 cr</small>
+                  </button>
+                </section>
+
+                <section class="node-group group-video">
+                  <h3>分镜视频生产</h3>
+                  <button class="flow-node text-node" data-node="shot-prompt">
+                    <span>Prompt</span>
+                    <strong>C1 分镜 Prompt</strong>
+                    <small>单镜头自洽校验 passed</small>
+                  </button>
+                  <button class="flow-node image-node" data-node="storyboard">
+                    <span>Image</span>
+                    <strong>C1 分镜图</strong>
+                    <small>9:16 · 12s · 5 cr</small>
+                  </button>
+                  <button class="flow-node video-node" data-node="final-video">
+                    <span>Video</span>
+                    <strong>最终广告视频</strong>
+                    <small>15s · pending</small>
+                  </button>
+                </section>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="video" class="view" aria-label="Ad Video">
+          <section class="custom-generator" data-generator="video">
+            <div class="generator-history" id="video-history">
+              <div class="history-empty">
+                <span class="history-spark" aria-hidden="true">✦</span>
+                <p>从底部 composer 开始一次新的视频生成。</p>
+              </div>
+            </div>
+
+            <div class="generator-dialog-wrapper">
+              <div class="composer-dialog" data-composer="video">
+                <button class="return-btn visible" type="button" data-return-bottom>
+                  回到底部
+                  <span aria-hidden="true">↓</span>
+                </button>
+
+                <div class="composer-main-area">
+                  <div class="composer-slots-row" aria-label="Video reference inputs">
+                    <button class="slot-stack" type="button" data-slot-demo="video-product" aria-label="添加产品图">
+                      <span class="slot-required-mark" aria-hidden="true">*</span>
+                      <span class="stack-card add-card">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <rect x="4" y="5" width="16" height="14" rx="3"></rect>
+                          <path d="m7 16 4-4 3 3 2-2 1 3"></path>
+                          <circle cx="16" cy="9" r="1.5"></circle>
+                        </svg>
+                        <span class="slot-upload-plus">+</span>
+                      </span>
+                      <span class="slot-label" data-kind="image">产品图</span>
+                    </button>
+                    <button class="slot-stack" type="button" data-slot-demo="video-reference" aria-label="添加参考视频">
+                      <span class="stack-card add-card">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <rect x="4" y="6" width="12" height="12" rx="2"></rect>
+                          <path d="m16 11 4-3v8l-4-3"></path>
+                        </svg>
+                        <span class="slot-upload-plus">+</span>
+                      </span>
+                      <span class="slot-label" data-kind="video">参考视频</span>
+                    </button>
+                    <button class="slot-stack" type="button" data-slot-demo="video-character" aria-label="添加人物参考">
+                      <span class="stack-card add-card">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M20 21a8 8 0 0 0-16 0"></path>
+                          <circle cx="12" cy="8" r="4"></circle>
+                        </svg>
+                        <span class="slot-upload-plus">+</span>
+                      </span>
+                      <span class="slot-label" data-kind="image">人物</span>
+                    </button>
+                  </div>
+
+                  <div class="composer-prompt-area">
+                    <textarea id="video-prompt" class="composer-prompt" placeholder="描述你想生成的视频内容、主体、镜头、节奏、比例和投放场景。"></textarea>
+                  </div>
+                </div>
+
+                <div class="composer-bottom-bar">
+                  <div class="composer-dropdown">
+                    <button class="pill-btn" type="button" data-menu-toggle="video-task-menu">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <rect x="3" y="6" width="13" height="12" rx="2"></rect>
+                        <path d="m16 11 5-3v8l-5-3"></path>
+                      </svg>
+                      <span>视频生成</span>
+                      <span class="chevron">▾</span>
+                    </button>
+                    <div class="composer-menu" id="video-task-menu">
+                      <div class="menu-title">任务类型</div>
+                      <button class="dropdown-item active" type="button" data-generator-route="video">
+                        视频生成
+                        <span>✓</span>
+                      </button>
+                      <button class="dropdown-item" type="button" data-generator-route="image">图像生成</button>
+                    </div>
+                  </div>
+
+                  <div class="composer-dropdown">
+                    <button class="pill-btn" type="button" data-menu-toggle="video-model-menu">
+                      <span class="dot"></span>
+                      <span data-model-label>Seedance 2.0</span>
+                      <span class="chevron">▾</span>
+                    </button>
+                    <div class="composer-menu model-menu" id="video-model-menu">
+                      <div class="menu-title">模型</div>
+                      <button class="dropdown-item active" type="button" data-model-option="Seedance 2.0">
+                        Seedance 2.0
+                        <span>✓</span>
+                      </button>
+                      <button class="dropdown-item" type="button" data-model-option="Kling 3.0">Kling 3.0</button>
+                      <button class="dropdown-item" type="button" data-model-option="Veo">Veo</button>
+                    </div>
+                  </div>
+
+                  <div class="composer-dropdown">
+                    <button class="pill-btn" type="button" data-menu-toggle="video-mode-menu">
+                      <span>文字生成视频</span>
+                      <span class="chevron">▾</span>
+                    </button>
+                    <div class="composer-menu" id="video-mode-menu">
+                      <div class="menu-title">模式选择</div>
+                      <button class="dropdown-item active" type="button" data-summary-option="文字生成视频">文字生成视频 <span>✓</span></button>
+                      <button class="dropdown-item" type="button" data-summary-option="图生视频">图生视频</button>
+                      <button class="dropdown-item" type="button" data-summary-option="视频续写">视频续写</button>
+                    </div>
+                  </div>
+
+                  <div class="composer-dropdown">
+                    <button class="pill-btn" type="button" data-menu-toggle="video-basic-menu">
+                      <span>9:16 · 15s · 1080p</span>
+                      <span class="chevron">▾</span>
+                    </button>
+                    <div class="composer-menu config-menu" id="video-basic-menu">
+                      <div class="menu-title">基础参数</div>
+                      <button class="dropdown-item active" type="button" data-summary-option="9:16 · 15s · 1080p">9:16 · 15s · 1080p <span>✓</span></button>
+                      <button class="dropdown-item" type="button" data-summary-option="1:1 · 15s · 1080p">1:1 · 15s · 1080p</button>
+                      <button class="dropdown-item" type="button" data-summary-option="16:9 · 30s · 1080p">16:9 · 30s · 1080p</button>
+                    </div>
+                  </div>
+
+                  <div class="advanced-wrap">
+                    <button class="pill-btn advanced-icon-btn" type="button" data-advanced-toggle="video-advanced" aria-expanded="false" aria-label="高级选项">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M14 17H5"></path>
+                        <path d="M19 7h-9"></path>
+                        <circle cx="17" cy="17" r="3"></circle>
+                        <circle cx="7" cy="7" r="3"></circle>
+                      </svg>
+                    </button>
+                    <div class="advanced-panel" id="video-advanced">
+                      <div class="advanced-panel-body">
+                        <label>
+                          Negative prompt
+                          <textarea placeholder="不希望出现的画面、文字或风格"></textarea>
+                        </label>
+                        <label>
+                          Camera motion
+                          <select>
+                            <option>Auto</option>
+                            <option>Handheld</option>
+                            <option>Static</option>
+                            <option>Push in</option>
+                          </select>
+                        </label>
+                        <label>
+                          Seed
+                          <input type="number" placeholder="Random" />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="spacer"></div>
+
+                  <div class="composer-right-actions">
+                    <span class="token-count">✦ <span data-credit-count>0</span></span>
+                    <button class="send-btn" type="button" data-submit-generator="video" aria-label="生成视频" disabled>
+                      <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <path d="M8 3v10M3.5 7.5L8 3l4.5 4.5"></path>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section id="image" class="view" aria-label="Ad Image">
+          <section class="custom-generator" data-generator="image">
+            <div class="generator-history" id="image-history">
+              <div class="history-empty">
+                <span class="history-spark" aria-hidden="true">✦</span>
+                <p>从底部 composer 开始一次新的图片生成。</p>
+              </div>
+            </div>
+
+            <div class="generator-dialog-wrapper">
+              <div class="composer-dialog" data-composer="image">
+                <button class="return-btn visible" type="button" data-return-bottom>
+                  回到底部
+                  <span aria-hidden="true">↓</span>
+                </button>
+
+                <div class="composer-main-area">
+                  <div class="composer-slots-row" aria-label="Image reference inputs">
+                    <button class="slot-stack" type="button" data-slot-demo="image-product" aria-label="添加产品图">
+                      <span class="slot-required-mark" aria-hidden="true">*</span>
+                      <span class="stack-card add-card">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <rect x="4" y="5" width="16" height="14" rx="3"></rect>
+                          <path d="m7 16 4-4 3 3 2-2 1 3"></path>
+                          <circle cx="16" cy="9" r="1.5"></circle>
+                        </svg>
+                        <span class="slot-upload-plus">+</span>
+                      </span>
+                      <span class="slot-label" data-kind="image">产品图</span>
+                    </button>
+                    <button class="slot-stack" type="button" data-slot-demo="image-character" aria-label="添加人物图">
+                      <span class="stack-card add-card">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M20 21a8 8 0 0 0-16 0"></path>
+                          <circle cx="12" cy="8" r="4"></circle>
+                        </svg>
+                        <span class="slot-upload-plus">+</span>
+                      </span>
+                      <span class="slot-label" data-kind="image">人物</span>
+                    </button>
+                    <button class="slot-stack" type="button" data-slot-demo="image-style" aria-label="添加风格参考">
+                      <span class="stack-card add-card">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M12 3v18"></path>
+                          <path d="M3 12h18"></path>
+                          <path d="m5 5 14 14"></path>
+                          <path d="m19 5-14 14"></path>
+                        </svg>
+                        <span class="slot-upload-plus">+</span>
+                      </span>
+                      <span class="slot-label" data-kind="image">风格</span>
+                    </button>
+                  </div>
+
+                  <div class="composer-prompt-area">
+                    <textarea id="image-prompt" class="composer-prompt" placeholder="描述你想生成的图片主体、构图、文案区域、比例、质感和投放渠道。"></textarea>
+                  </div>
+                </div>
+
+                <div class="composer-bottom-bar">
+                  <div class="composer-dropdown">
+                    <button class="pill-btn" type="button" data-menu-toggle="image-task-menu">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <rect x="4" y="5" width="16" height="14" rx="3"></rect>
+                        <path d="m7 16 4-4 3 3 2-2 1 3"></path>
+                        <circle cx="16" cy="9" r="1.5"></circle>
+                      </svg>
+                      <span>图像生成</span>
+                      <span class="chevron">▾</span>
+                    </button>
+                    <div class="composer-menu" id="image-task-menu">
+                      <div class="menu-title">任务类型</div>
+                      <button class="dropdown-item" type="button" data-generator-route="video">视频生成</button>
+                      <button class="dropdown-item active" type="button" data-generator-route="image">
+                        图像生成
+                        <span>✓</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="composer-dropdown">
+                    <button class="pill-btn" type="button" data-menu-toggle="image-model-menu">
+                      <span class="dot"></span>
+                      <span data-model-label>GPT Image</span>
+                      <span class="chevron">▾</span>
+                    </button>
+                    <div class="composer-menu model-menu" id="image-model-menu">
+                      <div class="menu-title">模型</div>
+                      <button class="dropdown-item active" type="button" data-model-option="GPT Image">
+                        GPT Image
+                        <span>✓</span>
+                      </button>
+                      <button class="dropdown-item" type="button" data-model-option="Imagen">Imagen</button>
+                      <button class="dropdown-item" type="button" data-model-option="Flux">Flux</button>
+                    </div>
+                  </div>
+
+                  <div class="composer-dropdown">
+                    <button class="pill-btn" type="button" data-menu-toggle="image-basic-menu">
+                      <span>4:5 · 4 张 · UGC</span>
+                      <span class="chevron">▾</span>
+                    </button>
+                    <div class="composer-menu config-menu" id="image-basic-menu">
+                      <div class="menu-title">基础参数</div>
+                      <button class="dropdown-item active" type="button" data-summary-option="4:5 · 4 张 · UGC">4:5 · 4 张 · UGC <span>✓</span></button>
+                      <button class="dropdown-item" type="button" data-summary-option="1:1 · 4 张 · 商品主图">1:1 · 4 张 · 商品主图</button>
+                      <button class="dropdown-item" type="button" data-summary-option="9:16 · 2 张 · App 素材">9:16 · 2 张 · App 素材</button>
+                    </div>
+                  </div>
+
+                  <div class="advanced-wrap">
+                    <button class="pill-btn advanced-icon-btn" type="button" data-advanced-toggle="image-advanced" aria-expanded="false" aria-label="高级选项">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M14 17H5"></path>
+                        <path d="M19 7h-9"></path>
+                        <circle cx="17" cy="17" r="3"></circle>
+                        <circle cx="7" cy="7" r="3"></circle>
+                      </svg>
+                    </button>
+                    <div class="advanced-panel" id="image-advanced">
+                      <div class="advanced-panel-body">
+                        <label>
+                          Negative prompt
+                          <textarea placeholder="不希望出现的元素、文案或风格"></textarea>
+                        </label>
+                        <label>
+                          Lighting
+                          <select>
+                            <option>Auto</option>
+                            <option>Soft studio</option>
+                            <option>Natural daylight</option>
+                            <option>High contrast</option>
+                          </select>
+                        </label>
+                        <label>
+                          Seed
+                          <input type="number" placeholder="Random" />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="spacer"></div>
+
+                  <div class="composer-right-actions">
+                    <span class="token-count">✦ <span data-credit-count>0</span></span>
+                    <button class="send-btn" type="button" data-submit-generator="image" aria-label="生成图片" disabled>
+                      <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <path d="M8 3v10M3.5 7.5L8 3l4.5 4.5"></path>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section id="templates" class="view" aria-label="Templates">
+          <section class="section-band">
+            <div class="section-head">
+              <div>
+                <h2>Templates</h2>
+                <p>按渠道、产品类型和素材形态筛选，点击后进入预填表单。</p>
+              </div>
+            </div>
+            <div class="filter-row">
+              <button class="chip is-selected">全部</button>
+              <button class="chip">TikTok</button>
+              <button class="chip">YouTube</button>
+              <button class="chip">App</button>
+              <button class="chip">Ecommerce</button>
+              <button class="chip">Game</button>
+              <button class="chip">数字人口播</button>
+            </div>
+            <div class="template-grid large">
+              <article class="template-card" data-template="tiktok-app">
+                <div class="thumb thumb-app"><div class="phone-mock"></div><div class="cutline">APP ALERT</div></div>
+                <div class="card-meta"><span>Video</span><span>TikTok</span></div>
+                <h4>TikTok App 危机 Hook</h4>
+              </article>
+              <article class="template-card" data-template="ugc-product">
+                <div class="thumb thumb-kitchen"><div class="person-mock"></div><div class="product-mock"></div></div>
+                <div class="card-meta"><span>Video</span><span>Ecommerce</span></div>
+                <h4>商品演示 UGC</h4>
+              </article>
+              <article class="template-card" data-template="avatar">
+                <div class="thumb thumb-avatar"><div class="avatar-mock"></div><div class="caption-lines"></div></div>
+                <div class="card-meta"><span>Video</span><span>Avatar</span></div>
+                <h4>App 功能口播</h4>
+              </article>
+              <article class="template-card" data-template="image-demo">
+                <div class="thumb thumb-image"><div class="packshot"></div><div class="badge-mock">SALE</div></div>
+                <div class="card-meta"><span>Image</span><span>4:5</span></div>
+                <h4>电商产品主图</h4>
+              </article>
+              <article class="template-card" data-template="youtube-review">
+                <div class="thumb thumb-review"><div class="review-window"></div><div class="play-mock">▶</div></div>
+                <div class="card-meta"><span>Video</span><span>YouTube</span></div>
+                <h4>评测对比短视频</h4>
+              </article>
+              <article class="template-card" data-template="gameplay">
+                <div class="thumb thumb-game"><div class="game-grid"></div><div class="score-mock">LV 12</div></div>
+                <div class="card-meta"><span>Video</span><span>Game</span></div>
+                <h4>游戏试玩 Hook</h4>
+              </article>
+            </div>
+          </section>
+        </section>
+
+        <section id="assets" class="view" aria-label="Assets">
+          <div class="assets-layout">
+            <aside class="asset-list">
+              <div class="section-head compact">
+                <div>
+                  <h2>Products</h2>
+                  <p>产品包与复用资产</p>
+                </div>
+              </div>
+              <button class="product-pack is-selected">
+                <div class="product-icon">FL</div>
+                <div>
+                  <strong>Family Locator</strong>
+                  <small>App · 12 assets</small>
+                </div>
+              </button>
+              <button class="product-pack">
+                <div class="product-icon warm">BB</div>
+                <div>
+                  <strong>Baby Bottle Brand</strong>
+                  <small>Ecommerce · 7 assets</small>
+                </div>
+              </button>
+              <button class="product-pack">
+                <div class="product-icon cool">GA</div>
+                <div>
+                  <strong>Game App</strong>
+                  <small>Game · 9 assets</small>
+                </div>
+              </button>
+            </aside>
+            <section class="asset-detail">
+              <div class="asset-detail-head">
+                <div>
+                  <span class="entry-tag">Product Pack</span>
+                  <h2>Family Locator</h2>
+                </div>
+                <div class="topbar-actions">
+                  <button class="ghost-btn">编辑</button>
+                  <button class="primary-btn" data-entry="clone">用于复刻广告</button>
+                </div>
+              </div>
+              <div class="product-summary">
+                <div class="product-logo">FL</div>
+                <div>
+                  <h3>核心卖点</h3>
+                  <p>实时位置共享、异常提醒、家庭安全场景，面向父母、儿童和老人照护者。</p>
+                </div>
+                <div>
+                  <h3>痛点</h3>
+                  <p>孩子放学未联系、老人走失、家人临时失联、跨城市照护焦虑。</p>
+                </div>
+              </div>
+              <div class="asset-grid">
+                <article class="asset-card"><div class="asset-thumb logo-thumb">FL</div><strong>Logo / Icon</strong><span>locked</span></article>
+                <article class="asset-card"><div class="asset-thumb ui-thumb"></div><strong>App UI 截图</strong><span>product_asset</span></article>
+                <article class="asset-card"><div class="asset-thumb person-thumb"></div><strong>泰国母亲人物参考</strong><span>character_reference</span></article>
+                <article class="asset-card"><div class="asset-thumb scene-thumb"></div><strong>曼谷街景</strong><span>scene_reference</span></article>
+                <article class="asset-card"><div class="asset-thumb video-thumb"></div><strong>竞品视频</strong><span>competitor_asset</span></article>
+                <article class="asset-card"><div class="asset-thumb result-thumb"></div><strong>C1 分镜视频</strong><span>shot_video</span></article>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <aside class="node-drawer" id="node-drawer" aria-hidden="true">
+      <div class="drawer-head">
+        <div>
+          <span class="entry-tag" id="drawer-type">Node</span>
+          <h2 id="drawer-title">节点详情</h2>
+        </div>
+        <button class="icon-btn" id="drawer-close" aria-label="Close">×</button>
+      </div>
+      <div class="drawer-preview" id="drawer-preview"></div>
+      <dl class="node-detail-list">
+        <div><dt>Status</dt><dd id="drawer-status">completed</dd></div>
+        <div><dt>Model</dt><dd id="drawer-model">GPT Image</dd></div>
+        <div><dt>Time</dt><dd id="drawer-time">18s</dd></div>
+        <div><dt>Cost</dt><dd id="drawer-cost">8 credits</dd></div>
+      </dl>
+      <div class="drawer-section">
+        <h3>Input</h3>
+        <p id="drawer-input">来自产品包和脚本节点。</p>
+      </div>
+      <div class="drawer-section">
+        <h3>Output</h3>
+        <p id="drawer-output">可作为后续分镜图和视频生成输入。</p>
+      </div>
+      <div class="drawer-actions">
+        <button class="ghost-btn">替换输入</button>
+        <button class="ghost-btn">分支对比</button>
+        <button class="primary-btn">重跑节点</button>
+      </div>
+    </aside>
+
+    <div class="toast" id="toast">已套用模板</div>
+    <script src="./app.js"></script>
+  </body>
+</html>
