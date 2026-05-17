@@ -14,12 +14,13 @@ import {
   launcherCopy
 } from "@/lib/mock-data";
 
-type LauncherMode = "agent" | "video" | "image";
+export type LauncherMode = "agent" | "video" | "image";
 
 type LauncherProps = {
   onRouteChange: (route: AppRoute) => void;
   onStartAgent: (mode: AgentMode, prompt: string) => void;
   onStartGeneration?: (kind: GenerationKind, prompt: string) => void;
+  onModeChange?: (mode: LauncherMode) => void;
   promptId?: string;
   showTabs?: boolean;
 };
@@ -29,7 +30,7 @@ function getParamDisplayValue(param: GenerationParam, value: GenerationParamValu
   return option?.label ?? String(value ?? param.defaultValue ?? "Auto");
 }
 
-export function Launcher({ onRouteChange, onStartAgent, onStartGeneration, promptId = "launcher-prompt", showTabs = true }: LauncherProps) {
+export function Launcher({ onRouteChange, onStartAgent, onStartGeneration, onModeChange, promptId = "launcher-prompt", showTabs = true }: LauncherProps) {
   const [mode, setMode] = useState<LauncherMode>("agent");
   const [agentMode, setAgentMode] = useState<AgentMode>("clone");
   const [prompt, setPrompt] = useState("");
@@ -37,6 +38,11 @@ export function Launcher({ onRouteChange, onStartAgent, onStartGeneration, promp
   const isAgent = mode === "agent";
   const generationKind = isAgent ? null : mode;
   const copy = isAgent ? launcherCopy.agent[agentMode] : launcherCopy[mode];
+
+  function selectMode(nextMode: LauncherMode) {
+    setMode(nextMode);
+    onModeChange?.(nextMode);
+  }
 
   function runAction() {
     if (mode === "agent") {
@@ -243,15 +249,15 @@ export function Launcher({ onRouteChange, onStartAgent, onStartGeneration, promp
     <div className="agent-hub">
       {showTabs ? (
         <div className="launcher-tabs" aria-label="Create mode">
-          <button className={`launcher-tab ${mode === "agent" ? "is-active" : ""}`} type="button" onClick={() => setMode("agent")}>
+          <button className={`launcher-tab ${mode === "agent" ? "is-active" : ""}`} type="button" onClick={() => selectMode("agent")}>
             <span className="mode-icon icon-agent" aria-hidden="true" />
             <strong>Agent</strong>
           </button>
-          <button className={`launcher-tab ${mode === "video" ? "is-active" : ""}`} type="button" onClick={() => setMode("video")}>
+          <button className={`launcher-tab ${mode === "video" ? "is-active" : ""}`} type="button" onClick={() => selectMode("video")}>
             <span className="mode-icon icon-video" aria-hidden="true" />
             <strong>Video</strong>
           </button>
-          <button className={`launcher-tab ${mode === "image" ? "is-active" : ""}`} type="button" onClick={() => setMode("image")}>
+          <button className={`launcher-tab ${mode === "image" ? "is-active" : ""}`} type="button" onClick={() => selectMode("image")}>
             <span className="mode-icon icon-image" aria-hidden="true" />
             <strong>Image</strong>
           </button>

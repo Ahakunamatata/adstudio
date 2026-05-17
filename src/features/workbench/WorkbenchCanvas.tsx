@@ -17,6 +17,7 @@ import {
   MiniMap,
   PanOnScrollMode,
   ReactFlow,
+  SelectionMode,
   ViewportPortal,
   applyNodeChanges,
   useReactFlow,
@@ -24,6 +25,7 @@ import {
   type Connection,
   type EdgeChange,
   type NodeChange,
+  type NodeSelectionChange,
   type ReactFlowInstance
 } from "@xyflow/react";
 import { FileText, Image as ImageIcon, Maximize2, UploadCloud, Video } from "lucide-react";
@@ -45,6 +47,7 @@ type CanvasState = {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
   selectedNodeId: string | null;
+  selectedNodeIds: string[];
   hoveredEdgeId: string | null;
   draggingNodeId: string | null;
   connectionNodeId: string | null;
@@ -56,6 +59,7 @@ type LocalCanvasAction =
   | CanvasRuntimeAction
   | { type: "moveNode"; nodeId: string; position: { x: number; y: number } }
   | { type: "selectNode"; nodeId: string | null }
+  | { type: "selectNodes"; nodeIds: string[] }
   | { type: "setHoveredEdge"; edgeId: string | null }
   | { type: "setDraggingNode"; nodeId: string | null }
   | { type: "setConnectionNode"; nodeId: string | null };
@@ -64,6 +68,7 @@ const initialState: CanvasState = {
   nodes: initialCanvasNodes,
   edges: initialCanvasEdges,
   selectedNodeId: null,
+  selectedNodeIds: [],
   hoveredEdgeId: null,
   draggingNodeId: null,
   connectionNodeId: null,
@@ -100,6 +105,10 @@ function getActionNodeId(action: CanvasRuntimeAction) {
 
 function shouldShowGenerationPanel(kind: CanvasNodeKind) {
   return kind === "image" || kind === "video" || kind === "upload";
+}
+
+function isNodeSelectionChange(change: NodeChange<AdCanvasFlowNode>): change is NodeSelectionChange {
+  return change.type === "select";
 }
 
 function getGenerationPanelOffset(kind: CanvasNodeKind) {
@@ -148,7 +157,18 @@ function canvasReducer(state: CanvasState, action: LocalCanvasAction): CanvasSta
   if (action.type === "selectNode") {
     return {
       ...state,
-      selectedNodeId: action.nodeId
+      selectedNodeId: action.nodeId,
+      selectedNodeIds: action.nodeId ? [action.nodeId] : []
+    };
+  }
+
+  if (action.type === "selectNodes") {
+    const selectedNodeIds = Array.from(new Set(action.nodeIds));
+
+    return {
+      ...state,
+      selectedNodeId: null,
+      selectedNodeIds
     };
   }
 
@@ -176,6 +196,7 @@ function canvasReducer(state: CanvasState, action: LocalCanvasAction): CanvasSta
   const result = applyCanvasAction(state.nodes, state.edges, action);
   const actionNodeId = getActionNodeId(action);
   const selectedNodeId = result.selectedNodeId ?? (action.type === "openNodeDetail" ? action.nodeId : state.selectedNodeId);
+  const selectedNodeIds = selectedNodeId ? [selectedNodeId] : state.selectedNodeIds;
   const detailNodeId = shouldSyncDetail(action)
     ? result.changedNodeId ?? result.selectedNodeId ?? actionNodeId ?? state.detailNodeId
     : state.detailNodeId;
@@ -184,6 +205,7 @@ function canvasReducer(state: CanvasState, action: LocalCanvasAction): CanvasSta
     nodes: result.nodes,
     edges: result.edges,
     selectedNodeId,
+    selectedNodeIds,
     hoveredEdgeId: state.hoveredEdgeId,
     draggingNodeId: state.draggingNodeId,
     connectionNodeId: state.connectionNodeId,
@@ -195,7 +217,7 @@ function canvasReducer(state: CanvasState, action: LocalCanvasAction): CanvasSta
 function buildFlowNodes(
   nodes: CanvasNode[],
   edges: CanvasEdge[],
-  selectedNodeId: string | null,
+  selectedNodeIds: string[],
   handlers: {
     onCreateFromNode: (nodeId: string, kind: CanvasNodeKind) => void;
     onLockNode: (nodeId: string) => void;
@@ -212,6 +234,7 @@ function buildFlowNodes(
   }
 ): AdCanvasFlowNode[] {
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const selectedNodeIdSet = new Set(selectedNodeIds);
 
   return nodes.map((node) => {
     const parentTitles = edges
@@ -234,7 +257,7 @@ function buildFlowNodes(
       id: node.id,
       type: "adCanvasNode",
       position: node.position,
-      selected: selectedNodeId === node.id,
+      selected: selectedNodeIdSet.has(node.id),
       data: {
         canvasNode: node,
         parentTitles,
@@ -249,18 +272,19 @@ function buildFlowEdges(
   edges: CanvasEdge[],
   nodes: CanvasNode[],
   uiState: {
-    selectedNodeId: string | null;
+    selectedNodeIds: string[];
     hoveredEdgeId: string | null;
     draggingNodeId: string | null;
     connectionNodeId: string | null;
   }
 ): AdCanvasFlowEdge[] {
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const selectedNodeIdSet = new Set(uiState.selectedNodeIds);
 
   return edges.map((edge) => {
     const target = nodeMap.get(edge.target);
     const stale = target?.status === "stale";
-    const connectedToSelection = edge.source === uiState.selectedNodeId || edge.target === uiState.selectedNodeId;
+    const connectedToSelection = selectedNodeIdSet.has(edge.source) || selectedNodeIdSet.has(edge.target);
     const hovered = edge.id === uiState.hoveredEdgeId;
     const draggingAdjacent = edge.source === uiState.draggingNodeId || edge.target === uiState.draggingNodeId;
     const draftAdjacent = edge.source === uiState.connectionNodeId || edge.target === uiState.connectionNodeId;
@@ -416,6 +440,11 @@ export function WorkbenchCanvas({ session }: WorkbenchCanvasProps) {
   const [canvasPanning, setCanvasPanning] = useState(false);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<AdCanvasFlowNode, AdCanvasFlowEdge> | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
+  const selectedNodeIdsRef = useRef<string[]>(initialState.selectedNodeIds);
+
+  useEffect(() => {
+    selectedNodeIdsRef.current = canvasState.selectedNodeIds;
+  }, [canvasState.selectedNodeIds]);
 
   const openNodeById = useCallback((nodeId: string) => {
     setCreateMenu(null);
@@ -480,11 +509,11 @@ export function WorkbenchCanvas({ session }: WorkbenchCanvasProps) {
   );
 
   const baseFlowNodes = useMemo(
-    () => buildFlowNodes(canvasState.nodes, canvasState.edges, canvasState.selectedNodeId, flowNodeHandlers),
+    () => buildFlowNodes(canvasState.nodes, canvasState.edges, canvasState.selectedNodeIds, flowNodeHandlers),
     [
       canvasState.nodes,
       canvasState.edges,
-      canvasState.selectedNodeId,
+      canvasState.selectedNodeIds,
       flowNodeHandlers
     ]
   );
@@ -504,7 +533,7 @@ export function WorkbenchCanvas({ session }: WorkbenchCanvasProps) {
   const flowEdges = useMemo(
     () =>
       buildFlowEdges(canvasState.edges, canvasState.nodes, {
-        selectedNodeId: canvasState.selectedNodeId,
+        selectedNodeIds: canvasState.selectedNodeIds,
         hoveredEdgeId: canvasState.hoveredEdgeId,
         draggingNodeId: canvasState.draggingNodeId,
         connectionNodeId: canvasState.connectionNodeId
@@ -512,7 +541,7 @@ export function WorkbenchCanvas({ session }: WorkbenchCanvasProps) {
     [
       canvasState.edges,
       canvasState.nodes,
-      canvasState.selectedNodeId,
+      canvasState.selectedNodeIds,
       canvasState.hoveredEdgeId,
       canvasState.draggingNodeId,
       canvasState.connectionNodeId
@@ -540,9 +569,28 @@ export function WorkbenchCanvas({ session }: WorkbenchCanvasProps) {
     return () => window.removeEventListener(CANVAS_ACTION_EVENT, handleCanvasEvent);
   }, [runNodeGeneration]);
 
-  const handleNodesChange = useCallback((changes: NodeChange<AdCanvasFlowNode>[]) => {
-    setFlowNodeSnapshots((currentNodes) => applyNodeChanges(changes, mergeFlowNodes(currentNodes, baseFlowNodes)));
-  }, [baseFlowNodes]);
+  const handleNodesChange = useCallback(
+    (changes: NodeChange<AdCanvasFlowNode>[]) => {
+      setFlowNodeSnapshots((currentNodes) => applyNodeChanges(changes, mergeFlowNodes(currentNodes, baseFlowNodes)));
+
+      const selectionChanges = changes.filter(isNodeSelectionChange);
+      if (!selectionChanges.length) return;
+
+      const nextSelectedNodeIds = new Set(selectedNodeIdsRef.current);
+      selectionChanges.forEach((change) => {
+        if (change.selected) {
+          nextSelectedNodeIds.add(change.id);
+        } else {
+          nextSelectedNodeIds.delete(change.id);
+        }
+      });
+
+      const nodeIds = Array.from(nextSelectedNodeIds);
+      selectedNodeIdsRef.current = nodeIds;
+      dispatchCanvas({ type: "selectNodes", nodeIds });
+    },
+    [baseFlowNodes]
+  );
 
   const handleEdgesChange = useCallback((changes: EdgeChange<AdCanvasFlowEdge>[]) => {
     changes.forEach((change) => {
@@ -665,14 +713,15 @@ export function WorkbenchCanvas({ session }: WorkbenchCanvasProps) {
           minZoom={0.35}
           maxZoom={1.7}
           fitViewOptions={{ padding: 0.18 }}
-          panOnDrag
+          panOnDrag={[1, 2]}
           panOnScroll
           panOnScrollMode={PanOnScrollMode.Free}
           panOnScrollSpeed={0.82}
           zoomOnScroll={false}
           zoomOnPinch
           zoomOnDoubleClick={false}
-          selectionOnDrag={false}
+          selectionOnDrag
+          selectionMode={SelectionMode.Partial}
           nodesFocusable={false}
           edgesFocusable={false}
           connectionRadius={26}

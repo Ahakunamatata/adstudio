@@ -113,8 +113,34 @@ button {
 }
 
 .rail-btn .icon {
-  font-size: 21px;
-  line-height: 1;
+  width: 21px;
+  height: 21px;
+  display: block;
+  overflow: visible;
+}
+
+.rail-icon path,
+.rail-icon rect,
+.rail-icon circle {
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition:
+    fill 0.18s ease,
+    stroke 0.18s ease,
+    opacity 0.18s ease,
+    filter 0.18s ease;
+}
+
+.rail-icon-accent {
+  fill: transparent;
+}
+
+.rail-btn.is-active .rail-icon-accent {
+  fill: rgba(201, 255, 80, 0.86);
+  stroke: rgba(201, 255, 80, 0.95);
+  filter: drop-shadow(0 0 5px rgba(201, 255, 80, 0.28));
 }
 
 .rail-btn span:last-child {
@@ -351,17 +377,17 @@ small {
 }
 
 .launcher-card {
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .launcher-title-row {
   display: grid;
   justify-items: center;
   gap: 14px;
-  margin: 4px auto 12px;
+  margin: 2px auto 14px;
   text-align: center;
 }
 
@@ -408,25 +434,26 @@ small {
 .generation-composer-dialog::before,
 .generation-composer-dialog::after {
   content: "";
-  --input-glow-angle: 0deg;
   position: absolute;
   pointer-events: none;
   border-radius: inherit;
-  background:
-    conic-gradient(
-      from var(--input-glow-angle),
-      rgba(201, 255, 80, 0),
-      rgba(201, 255, 80, 0.92),
-      rgba(66, 212, 183, 0.78),
-      rgba(106, 168, 255, 0.62),
-      rgba(201, 255, 80, 0.18),
-      rgba(201, 255, 80, 0)
-    );
-  animation: input-glow-spin 7.5s linear infinite;
 }
 
 .launcher-input-shell::before,
 .generation-composer-dialog::before {
+  --input-glow-angle: 0deg;
+  background:
+    conic-gradient(
+      from var(--input-glow-angle),
+      rgba(201, 255, 80, 0) 0deg 34deg,
+      rgba(201, 255, 80, 0.72) 56deg,
+      rgba(66, 212, 183, 0.54) 70deg,
+      rgba(106, 168, 255, 0.34) 84deg,
+      rgba(201, 255, 80, 0) 112deg 214deg,
+      rgba(66, 212, 183, 0.3) 244deg,
+      rgba(201, 255, 80, 0) 278deg 360deg
+    );
+  animation: input-glow-spin 7.5s linear infinite;
   inset: -1px;
   z-index: 2;
   padding: 1px;
@@ -439,16 +466,17 @@ small {
 
 .launcher-input-shell::after,
 .generation-composer-dialog::after {
-  inset: -7px;
+  inset: -5px;
   z-index: 0;
-  padding: 7px;
-  opacity: 0.38;
-  filter: blur(12px);
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
+  opacity: 0.34;
+  border: 1px solid rgba(66, 212, 183, 0.14);
+  background: transparent;
+  box-shadow:
+    0 0 24px rgba(66, 212, 183, 0.16),
+    0 0 56px rgba(201, 255, 80, 0.08),
+    0 18px 38px rgba(0, 0, 0, 0.24);
+  filter: blur(8px);
+  animation: input-glow-breathe 5.6s ease-in-out infinite;
 }
 
 .launcher-input-shell > *,
@@ -466,6 +494,19 @@ small {
 @keyframes input-glow-spin {
   to {
     --input-glow-angle: 360deg;
+  }
+}
+
+@keyframes input-glow-breathe {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: scale(0.998);
+  }
+
+  50% {
+    opacity: 0.44;
+    transform: scale(1.003);
   }
 }
 
@@ -744,7 +785,7 @@ small {
 }
 
 .launcher-card.is-generation-mode {
-  background: rgba(18, 20, 19, 0.9);
+  background: transparent;
 }
 
 .home-generation-composer {
@@ -2109,6 +2150,8 @@ textarea {
 }
 
 .ad-canvas-shell .react-flow {
+  --xy-selection-background-color: rgba(201, 255, 80, 0.08);
+  --xy-selection-border: 1px solid rgba(201, 255, 80, 0.7);
   background:
     linear-gradient(rgba(255, 255, 255, 0.026) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px),
@@ -2120,9 +2163,22 @@ textarea {
   cursor: grab;
 }
 
-.ad-canvas-shell.is-panning .react-flow__pane,
-.ad-canvas-shell .react-flow__pane:active {
+.ad-canvas-shell .react-flow__pane.selection,
+.ad-canvas-shell .react-flow__pane.selection:active {
+  cursor: crosshair;
+}
+
+.ad-canvas-shell.is-panning .react-flow__pane:not(.selection),
+.ad-canvas-shell .react-flow__pane:not(.selection):active {
   cursor: grabbing;
+}
+
+.ad-canvas-shell .react-flow__selection,
+.ad-canvas-shell .react-flow__nodesselection-rect {
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 1px rgba(201, 255, 80, 0.12),
+    0 0 22px rgba(201, 255, 80, 0.12);
 }
 
 .ad-canvas-shell .react-flow__node {

@@ -6,10 +6,10 @@ export const metadata: Metadata = {
   description: "AI Ad Production Studio for Performance Creatives",
   icons: {
     icon: [
-      { url: "/favicon.ico?v=20260517-outline", type: "image/x-icon" },
-      { url: "/brand/ad-studio-favicon.png?v=20260517-outline", type: "image/png", sizes: "512x512" }
+      { url: "/favicon.ico?v=20260517-dedicated", type: "image/x-icon" },
+      { url: "/brand/ad-studio-favicon.png?v=20260517-dedicated", type: "image/png", sizes: "512x512" }
     ],
-    shortcut: [{ url: "/favicon.ico?v=20260517-outline", type: "image/x-icon" }]
+    shortcut: [{ url: "/favicon.ico?v=20260517-dedicated", type: "image/x-icon" }]
   }
 };
 
