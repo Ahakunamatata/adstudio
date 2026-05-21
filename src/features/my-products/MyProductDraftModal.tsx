@@ -55,6 +55,98 @@ export function MyProductDraftModal({ initialUrl, onClose, onSubmit }: MyProduct
   const [newImageUrl, setNewImageUrl] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [uploadHint, setUploadHint] = useState<string | null>(null);
+  // URL-first 解析：用户贴 URL → 一键 AI 解析填充所有字段
+  const [parsing, setParsing] = useState(false);
+  const [parseHint, setParseHint] = useState<string | null>(null);
+  const [autoFilledFromUrl, setAutoFilledFromUrl] = useState(false);
+  // expanded = true 时显示所有手填字段；false 时只显示 URL hero 区。
+  // 用户点了「✨ 解析」成功，或者点「没有 URL，手动填」时展开。
+  const [expanded, setExpanded] = useState(false);
+
+  async function parseFromUrl() {
+    const url = draft.url.trim();
+    if (!url) {
+      setParseHint("先贴一个产品 URL");
+      return;
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      setParseHint("URL 需要 http:// 或 https:// 开头");
+      return;
+    }
+    setParseHint(null);
+    setParsing(true);
+    try {
+      const ctrl = new AbortController();
+      const timeout = setTimeout(() => ctrl.abort(), 30_000);
+      const response = await fetch("/api/my-products/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // 把用户已填的字段一起送给后端 —— LLM 会优先用用户输入，URL fetch
+        // 失败时（如 Amazon 反爬）这些字段就是关键的语义补充。
+        body: JSON.stringify({
+          url,
+          name: draft.name.trim(),
+          intro: draft.intro.trim(),
+          painPoints: draft.painPoints.trim(),
+          productType: draft.type
+        }),
+        signal: ctrl.signal
+      });
+      clearTimeout(timeout);
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        setParseHint(`解析失败：${response.status} ${text.slice(0, 80)}`);
+        return;
+      }
+      const data = (await response.json()) as {
+        productName?: string;
+        productType?: MyProductType | "Other";
+        cleanedIntro?: string;
+        cleanedPainPoints?: string;
+        mainImageUrl?: string | null;
+        canonicalUrl?: string | null;
+        pageBlockedByAntibot?: boolean;
+      };
+      // 自动填充：文本字段尊重用户已填（不覆盖），但 productType / images
+      // 让 AI 覆盖（用户没法准确判断 App vs Ecommerce，AI 看 URL 更准）。
+      // URL 用 canonicalUrl 回填（剥掉 utm/dib/ref 等 tracking，纯产品 URL）。
+      setDraft((prev) => ({
+        ...prev,
+        url: data.canonicalUrl || prev.url,
+        name: prev.name.trim() || data.productName || prev.name,
+        type:
+          (PRODUCT_TYPE_OPTIONS as readonly string[]).includes(data.productType ?? "")
+            ? (data.productType as MyProductType)
+            : prev.type,
+        intro: prev.intro.trim() || data.cleanedIntro || prev.intro,
+        painPoints: prev.painPoints.trim() || data.cleanedPainPoints || prev.painPoints,
+        // 图片：用 AI 拿到的 mainImageUrl 替换默认空数组（用户后续可手动改）
+        images:
+          data.mainImageUrl && !prev.images.includes(data.mainImageUrl)
+            ? [data.mainImageUrl, ...prev.images]
+            : prev.images
+      }));
+      setAutoFilledFromUrl(true);
+      setExpanded(true); // 解析成功 → 展开全部字段让用户审核
+      if (data.pageBlockedByAntibot) {
+        setParseHint(
+          "⚠ 该网站反爬较严，AI 没拿到真页面 —— 请在下方补充产品名 + 一句话介绍后再点「重新解析」"
+        );
+      } else {
+        setParseHint("✓ AI 已根据 URL 解析并填充字段，可在下方微调");
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setParseHint("解析超时（>30s），请重试或手动填写");
+      } else {
+        setParseHint(
+          `解析失败：${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    } finally {
+      setParsing(false);
+    }
+  }
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -142,10 +234,87 @@ export function MyProductDraftModal({ initialUrl, onClose, onSubmit }: MyProduct
         <div className="myp-modal-header">
           <span className="myp-modal-eyebrow">URL DRAFT</span>
           <h2 id="myp-draft-title" className="myp-modal-title">
-            {draft.name.trim() || "新增产品"}
+            {expanded ? (draft.name.trim() || "审核产品信息") : "贴上产品 URL，AI 自动解析"}
           </h2>
+          {!expanded ? (
+            <p className="myp-modal-subtitle">
+              不用手动填 —— 我们会从 URL 抓产品名、类型、介绍、痛点和关键词。
+            </p>
+          ) : null}
         </div>
 
+        {/* URL-first 解析区：贴 URL → 一键 AI 推断产品名/类型/介绍/痛点/关键词 */}
+        <div className={`myp-url-hero ${expanded ? "is-compact" : "is-hero"}`}>
+          <span className="myp-field-label">
+            🔗 产品 URL
+            {!expanded ? (
+              <span className="myp-muted-small">（贴上后 AI 自动填充其它字段）</span>
+            ) : null}
+          </span>
+          <div className="myp-url-hero-row">
+            <input
+              className="myp-field-input myp-url-hero-input"
+              type="url"
+              value={draft.url}
+              placeholder="https://apps.apple.com/... 或 https://yourstore.com/products/..."
+              disabled={parsing}
+              autoFocus={!expanded}
+              onChange={(event) => {
+                setDraft((prev) => ({ ...prev, url: event.target.value }));
+                setAutoFilledFromUrl(false);
+                setParseHint(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !parsing) {
+                  event.preventDefault();
+                  void parseFromUrl();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className={`myp-url-hero-btn ${parsing ? "is-loading" : ""}`}
+              disabled={parsing || draft.url.trim().length === 0}
+              onClick={() => void parseFromUrl()}
+            >
+              {parsing ? "AI 解析中…" : autoFilledFromUrl ? "重新解析" : "✨ AI 解析"}
+            </button>
+          </div>
+          {parseHint ? (
+            <div
+              className={`myp-url-hero-hint ${
+                parseHint.startsWith("✓")
+                  ? "is-success"
+                  : parseHint.startsWith("⚠")
+                    ? "is-warn"
+                    : "is-warn"
+              }`}
+            >
+              {parseHint}
+            </div>
+          ) : null}
+          {!expanded ? (
+            <button
+              type="button"
+              className="myp-url-hero-manual-link"
+              onClick={() => setExpanded(true)}
+            >
+              没有 URL？直接手动填 →
+            </button>
+          ) : null}
+        </div>
+
+        {/* 没解析过 + 没手动展开 → 只显示一个底部「取消」按钮，其它字段隐藏 */}
+        {!expanded ? (
+          <div className="myp-modal-footer myp-modal-footer-minimal">
+            <button type="button" className="myp-modal-cancel" onClick={onClose}>
+              取消
+            </button>
+          </div>
+        ) : null}
+
+        {expanded ? (
+        <>
         <div className="myp-modal-grid">
           <label className="myp-field">
             <span className="myp-field-label">产品名称</span>
@@ -192,17 +361,6 @@ export function MyProductDraftModal({ initialUrl, onClose, onSubmit }: MyProduct
             value={draft.painPoints}
             placeholder="用户在没有这款产品时遇到什么具体痛点 / 焦虑 / 任务卡点。"
             onChange={(event) => setDraft((prev) => ({ ...prev, painPoints: event.target.value }))}
-          />
-        </label>
-
-        <label className="myp-field">
-          <span className="myp-field-label">产品 URL</span>
-          <input
-            className="myp-field-input"
-            type="url"
-            value={draft.url}
-            placeholder="https://..."
-            onChange={(event) => setDraft((prev) => ({ ...prev, url: event.target.value }))}
           />
         </label>
 
@@ -330,6 +488,8 @@ export function MyProductDraftModal({ initialUrl, onClose, onSubmit }: MyProduct
             💾 保存并开始抓取
           </button>
         </div>
+        </>
+        ) : null}
       </div>
     </div>
   );

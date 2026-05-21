@@ -7793,6 +7793,137 @@ dd {
   gap: 14px;
 }
 
+/* URL-first 解析区（modal 顶部） */
+.myp-url-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid rgba(201, 255, 80, 0.25);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(201, 255, 80, 0.06) 0%, rgba(201, 255, 80, 0.02) 100%);
+  margin-bottom: 8px;
+}
+/* 初始 hero 态：放大输入框，让用户一眼看到这是核心动作 */
+.myp-url-hero.is-hero {
+  padding: 22px;
+  margin: 8px 0;
+}
+.myp-url-hero.is-hero .myp-url-hero-input {
+  font-size: 16px !important;
+  padding: 16px 18px !important;
+}
+.myp-url-hero.is-hero .myp-url-hero-btn {
+  font-size: 14px;
+  padding: 0 22px;
+  min-width: 130px;
+}
+.myp-url-hero.is-compact {
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border-color: var(--line);
+}
+
+/* 「没有 URL，直接手动填」次级 link */
+.myp-url-hero-manual-link {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: left;
+  margin-top: 4px;
+  transition: color 120ms ease;
+}
+.myp-url-hero-manual-link:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+/* 极简 footer：URL hero 还没展开时显示 */
+.myp-modal-footer-minimal {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 12px;
+}
+.myp-modal-cancel {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 8px 18px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.myp-modal-cancel:hover {
+  border-color: var(--text);
+  color: var(--text);
+}
+
+/* hero 模式时 modal subtitle */
+.myp-modal-subtitle {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 6px 0 0 0;
+  line-height: 1.5;
+}
+.myp-url-hero-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.myp-url-hero-input {
+  flex: 1;
+  font-size: 14px !important;
+  padding: 12px 14px !important;
+}
+.myp-url-hero-btn {
+  background: var(--lime);
+  color: var(--bg);
+  border: none;
+  border-radius: 6px;
+  padding: 0 18px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: filter 120ms ease, transform 120ms ease;
+  min-width: 110px;
+}
+.myp-url-hero-btn:hover:not(:disabled) {
+  filter: brightness(0.94);
+}
+.myp-url-hero-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.myp-url-hero-btn.is-loading {
+  background: var(--panel-2);
+  color: var(--lime);
+  border: 1px solid rgba(201, 255, 80, 0.3);
+  cursor: wait;
+}
+.myp-url-hero-hint {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.myp-url-hero-hint.is-success {
+  color: var(--lime);
+}
+.myp-url-hero-hint.is-warn {
+  color: #ffb347;
+}
+.myp-muted-small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: normal;
+  letter-spacing: 0;
+  text-transform: none;
+  margin-left: 6px;
+}
+
 .myp-field {
   display: flex;
   flex-direction: column;
