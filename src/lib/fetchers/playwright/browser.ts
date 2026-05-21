@@ -13,13 +13,24 @@
 // 不要从任何 Next.js Route Handler 或 React Server Component 静态 import。
 // 只能 dynamic import 或在 `scripts/*.ts` CLI 上下文里使用。
 
-import {
-  chromium,
-  type Browser,
-  type BrowserContext,
-  type Page,
-  type LaunchOptions
+import type {
+  Browser,
+  BrowserContext,
+  Page,
+  LaunchOptions
 } from "playwright";
+// playwright-extra wraps playwright chromium with plugin support;
+// puppeteer-extra-plugin-stealth covers 20+ fingerprint signals（webdriver /
+// chrome / plugins / languages / WebGL / canvas / iframe contentWindow / ...）
+// 同时干掉 TikTok / Google AdsTransparency 这种严反爬站的 ERR_CONNECTION_CLOSED。
+//
+// dynamic require 让 vanilla playwright 调用方（如本地测试）也能用，
+// stealth 只在生产 fetcher 路径里启用。
+import { chromium as chromiumExtra } from "playwright-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
+chromiumExtra.use(StealthPlugin());
+
+const chromium = chromiumExtra;
 
 export type BrowserSession = {
   browser: Browser;

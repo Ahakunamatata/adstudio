@@ -14,7 +14,9 @@
     "lucide-react": "latest",
     "next": "latest",
     "playwright": "^1.60.0",
+    "playwright-extra": "^4.3.6",
     "postgres": "^3.4.9",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "react": "latest",
     "react-dom": "latest",
     "zod": "latest"

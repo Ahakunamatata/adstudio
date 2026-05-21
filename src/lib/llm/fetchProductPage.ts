@@ -184,9 +184,14 @@ async function fetchWithPlaywright(
   urlStr: string,
   timeoutMs: number
 ): Promise<ProductPageContent> {
-  // 动态 import 避免 simple-fetch-only 场景加载 playwright（~50MB）。
-  const { chromium } = await import("playwright");
-  const browser = await chromium.launch({
+  // 动态 import：避免 simple-fetch-only 场景加载 playwright（~50MB）。
+  // 用 playwright-extra + stealth 覆盖 fingerprint，对付严反爬站（Amazon /
+  // Cloudflare protected）。
+  const { chromium: chromiumExtra } = await import("playwright-extra");
+  const { default: StealthPlugin } = await import("puppeteer-extra-plugin-stealth");
+  // chromium.use 是幂等的，多次 use 同一 plugin 不会出问题
+  (chromiumExtra as { use: (p: unknown) => unknown }).use(StealthPlugin());
+  const browser = await chromiumExtra.launch({
     headless: true,
     args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"]
   });
