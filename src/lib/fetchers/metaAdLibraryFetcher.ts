@@ -143,14 +143,30 @@ function pickBestMetaVideo(videos: MetaSnapshotVideo[] | undefined): string | nu
   return null;
 }
 
-// 把 cards / extras 里的额外 body 文案也合并进来，提高 embedding 召回率
+// Meta Dynamic Creative Ads（DCA）后端模板没在我们这未登录浏览器渲染时，
+// body 会返回 `{{product.brand}}` / `{{product.title}}` 这种占位符。这些
+// 字段拿来当 hook 文案没意义（embedding 也召不到准），整条直接丢掉。
+//
+// 检测条件：整段文本主要由 `{{...}}` 占位符组成（去掉占位符后剩余 < 5 字符）。
+// 只去掉占位符整段文本，单独一句里夹杂占位符的（如 "Get 25% off {{product.title}}"）
+// 仍然保留，因为剩下的部分还有实际信息。
+function isLikelyTemplatePlaceholder(text: string): boolean {
+  if (!text) return true;
+  const stripped = text.replace(/\{\{[^}]*\}\}/g, "").trim();
+  return stripped.length < 5;
+}
+
+// 把 cards / extras 里的额外 body 文案也合并进来，提高 embedding 召回率。
+// 过滤掉 DCA 模板占位符（"{{product.brand}}" 这种）。
 function collectCreativeBodies(snapshot: MetaSnapshot | undefined): string[] {
   if (!snapshot) return [];
   const out: string[] = [];
-  if (snapshot.body?.text) out.push(snapshot.body.text);
+  if (snapshot.body?.text && !isLikelyTemplatePlaceholder(snapshot.body.text)) {
+    out.push(snapshot.body.text);
+  }
   if (snapshot.cards) {
     for (const c of snapshot.cards) {
-      if (c.body) out.push(c.body);
+      if (c.body && !isLikelyTemplatePlaceholder(c.body)) out.push(c.body);
     }
   }
   return out;
@@ -159,10 +175,12 @@ function collectCreativeBodies(snapshot: MetaSnapshot | undefined): string[] {
 function collectCreativeTitles(snapshot: MetaSnapshot | undefined): string[] {
   if (!snapshot) return [];
   const out: string[] = [];
-  if (snapshot.title) out.push(snapshot.title);
+  if (snapshot.title && !isLikelyTemplatePlaceholder(snapshot.title)) {
+    out.push(snapshot.title);
+  }
   if (snapshot.cards) {
     for (const c of snapshot.cards) {
-      if (c.title) out.push(c.title);
+      if (c.title && !isLikelyTemplatePlaceholder(c.title)) out.push(c.title);
     }
   }
   return out;
@@ -177,10 +195,16 @@ export function metaAdLibraryItemToNewAd(
   const now = new Date();
   const snapshot = item.snapshot;
   const videoUrl = pickBestMetaVideo(snapshot?.videos);
+  // thumbnail fallback chain（按质量优先级）：
+  //   video preview → image original → image resized → cards[0] image →
+  //   page profile picture（DCO 动态广告 Meta 不暴露 image/video，但主页头像总有）
+  const cardImage = snapshot?.cards?.find((c) => c.image_url)?.image_url;
   const thumbnailUrl =
     snapshot?.videos?.[0]?.video_preview_image_url ??
     snapshot?.images?.[0]?.original_image_url ??
     snapshot?.images?.[0]?.resized_image_url ??
+    cardImage ??
+    snapshot?.page_profile_picture_url ??
     null;
   const adCreativeBodies = collectCreativeBodies(snapshot);
   const adCreativeTitles = collectCreativeTitles(snapshot);
@@ -316,9 +340,15 @@ export async function fetchMetaAdLibrary(
   let pageContent = "";
 
   try {
+    // 双轨代理：Meta 优先用 META_PROXY_URL（一般是 US datacenter，便宜+稳），
+    // 没设就 fallback 到 TIKTOK_PROXY_URL（共用住宅代理）。
+    // TikTok 反爬严，必须真住宅 IP；Meta 反爬轻，datacenter 也能跑。
+    const proxyUrl =
+      process.env.META_PROXY_URL ?? process.env.TIKTOK_PROXY_URL ?? null;
     session = await launchBrowserSession({
       headless: true,
-      navTimeoutMs: timeoutMs
+      navTimeoutMs: timeoutMs,
+      proxyUrl
     });
 
     session.page.on("response", async (resp) => {
@@ -496,5 +526,6 @@ export const __internals = {
   classifyMetaError,
   pickBestMetaVideo,
   collectCreativeBodies,
-  collectCreativeTitles
+  collectCreativeTitles,
+  isLikelyTemplatePlaceholder
 };

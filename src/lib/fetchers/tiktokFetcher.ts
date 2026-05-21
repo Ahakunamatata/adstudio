@@ -28,7 +28,7 @@ import {
   type BrowserSession
 } from "./playwright/browser";
 
-const DEFAULT_TIMEOUT_MS = 45_000; // search 模式要多等一波 XHR
+const DEFAULT_TIMEOUT_MS = 90_000; // search 模式要 page load + 等 trending + search input + 等 search XHR；TikTok 是 SPA 永远不 networkidle
 const TARGET_HOST = "ads.tiktok.com";
 const LIST_API_PATH = "/creative_radar_api/v1/top_ads/v2/list";
 // 当 XHR URL 里出现 keyword= 时是真搜索结果（不是 top trending）
@@ -314,10 +314,12 @@ export async function fetchTiktokAds(
 
     // navigate；abort signal 触发时 Playwright 会抛 timeout/abort error。
     // 用 gotoWithRetry 兜住代理 sticky rotation 导致的 transient 网络错误。
+    // 注意：TikTok Creative Center 是 SPA 持续 polling，networkidle 永远等不到 —
+    // 用 domcontentloaded（HTML 解析完），后面靠 page.on('response') 拦 list XHR。
     try {
       await gotoWithRetry(session.page, targetUrl, {
-        waitUntil: "networkidle",
-        timeout: timeoutMs,
+        waitUntil: "domcontentloaded",
+        timeout: 30_000, // 单次 navigation 30s 足够拿 HTML shell
         maxRetries: 2,
         retryBackoffMs: 4_000
       });

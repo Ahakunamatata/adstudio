@@ -4,11 +4,13 @@ import { useMemo, useState } from "react";
 import type {
   MyProduct,
   MyProductPlatformProgress,
+  MyProductScrapedAd,
   MyProductScrapeStatus,
   TopAd
 } from "@/lib/domain/schemas";
 import { topAdMap } from "@/lib/mock-data";
 import { TopAdDetailModal } from "@/features/templates/TopAdDetailModal";
+import { DbAdDetailModal } from "./DbAdDetailModal";
 import { MyProductDraftModal } from "./MyProductDraftModal";
 import { useMyProducts } from "./useMyProducts";
 
@@ -56,11 +58,37 @@ function buildTopAdClonePrompt(ad: TopAd, productName: string) {
   ].join("\n");
 }
 
+// DB ad（Meta web 抓 / TikTok 真广告）生成 clone prompt。比 mock TopAd 信息更丰富：
+// 实际投放数据 + 完整文案 + 落地页 + CTA。
+function buildDbAdClonePrompt(scraped: MyProductScrapedAd, productName: string): string {
+  const d = scraped.adData;
+  if (!d) {
+    return `请在 Agent 中复刻广告 ${scraped.adId} 到产品「${productName}」`;
+  }
+  const sourceLabel =
+    d.source === "meta" ? "Meta" : d.source === "tiktok" ? "TikTok" : d.source === "google" ? "Google" : scraped.platform;
+  const bodySnippet = d.creativeBodies[0]?.slice(0, 300) ?? "";
+  const parts: string[] = [
+    `请在 Agent 中复刻这条 ${sourceLabel} 爆款广告，迁移到产品「${productName}」：`,
+    `广告标题：${d.title}`,
+    `广告主：${d.advertiserName ?? "(未知)"}${d.region ? ` · 地区：${d.region}` : ""}`
+  ];
+  if (d.pageLikeCount) parts.push(`主页粉丝：${d.pageLikeCount.toLocaleString()}`);
+  if (d.ctaText) parts.push(`CTA：${d.ctaText}`);
+  if (d.landingPageUrl) parts.push(`落地页：${d.landingPageUrl}`);
+  if (bodySnippet) parts.push(`原文案节选：${bodySnippet}${d.creativeBodies[0] && d.creativeBodies[0].length > 300 ? "…" : ""}`);
+  if (scraped.matchedKeywords.length > 0) parts.push(`命中关键词：${scraped.matchedKeywords.join(", ")}`);
+  parts.push("不要直接复制原广告脚本或品牌表达，请先拆解 hook / 视觉 / 落地页结构，再迁移到当前产品包。");
+  return parts.join("\n");
+}
+
 export function MyProductsView({ onCloneInAgent, onReplicateAd }: MyProductsViewProps) {
   const { products, hydrated, createProduct, removeProduct, rescrape } = useMyProducts();
   const [preferredId, setPreferredId] = useState<string | null>(null);
   const [draftOpen, setDraftOpen] = useState(false);
   const [previewTopAdId, setPreviewTopAdId] = useState<string | null>(null);
+  // DB-backed ad（含 adData）走自己的 modal —— 字段结构跟 mock TopAd 完全不同
+  const [previewDbScraped, setPreviewDbScraped] = useState<MyProductScrapedAd | null>(null);
 
   const selectedId = useMemo(() => {
     if (preferredId && products.some((product) => product.id === preferredId)) return preferredId;
@@ -99,6 +127,28 @@ export function MyProductsView({ onCloneInAgent, onReplicateAd }: MyProductsView
     }
     if (onReplicateAd && selected) {
       onReplicateAd(ad.title, buildTopAdClonePrompt(ad, selected.name));
+    }
+  }
+
+  function handleCloneDbAd(_adId: string) {
+    const scraped = previewDbScraped;
+    setPreviewDbScraped(null);
+    if (!scraped || !selected || !scraped.adData) return;
+    // DB ad 走 prompt-based 复刻（onReplicateAd） —— 它的 ID 不在 mock topAdMap，
+    // 走 onCloneInAgent 会被 AdStudioApp.startCloneFromTopAd 拒掉。
+    // prompt 里塞了完整文案/landing/CTA/粉丝数，Agent Workbench 5-node LLM 拆即可。
+    const prompt = buildDbAdClonePrompt(scraped, selected.name);
+    if (onReplicateAd) {
+      onReplicateAd(scraped.adData.title, prompt);
+    }
+  }
+
+  function handleOpenAd(scraped: MyProductScrapedAd) {
+    // DB ad 走 DbAdDetailModal；老 mock TopAd 走 TopAdDetailModal
+    if (scraped.adData) {
+      setPreviewDbScraped(scraped);
+    } else {
+      setPreviewTopAdId(scraped.adId);
     }
   }
 
@@ -170,7 +220,7 @@ export function MyProductsView({ onCloneInAgent, onReplicateAd }: MyProductsView
             product={selected}
             onRescrape={() => rescrape(selected.id)}
             onRemove={() => removeProduct(selected.id)}
-            onOpenAd={(adId) => setPreviewTopAdId(adId)}
+            onOpenAd={handleOpenAd}
           />
         ) : (
           <div className="myp-detail-empty">从左侧选择一个产品</div>
@@ -185,6 +235,7 @@ export function MyProductsView({ onCloneInAgent, onReplicateAd }: MyProductsView
       ) : null}
 
       <TopAdDetailModal ad={previewTopAd} onClose={() => setPreviewTopAdId(null)} onCloneInAgent={handleClonePreview} />
+      <DbAdDetailModal scraped={previewDbScraped} onClose={() => setPreviewDbScraped(null)} onCloneInAgent={handleCloneDbAd} />
     </>
   );
 }
@@ -219,7 +270,7 @@ function ProductDetail({
   product: MyProduct;
   onRescrape: () => void;
   onRemove: () => void;
-  onOpenAd: (topAdId: string) => void;
+  onOpenAd: (scraped: MyProductScrapedAd) => void;
 }) {
   const isWorking = product.status === "parsing" || product.status === "scraping";
   return (
@@ -350,7 +401,7 @@ function PlatformProgressCard({ entry, status }: { entry: MyProductPlatformProgr
   );
 }
 
-function ScrapedAdsPanel({ product, onOpenAd }: { product: MyProduct; onOpenAd: (topAdId: string) => void }) {
+function ScrapedAdsPanel({ product, onOpenAd }: { product: MyProduct; onOpenAd: (scraped: MyProductScrapedAd) => void }) {
   if (product.status !== "done") {
     return (
       <div className="myp-detail-section">
@@ -384,6 +435,8 @@ function ScrapedAdsPanel({ product, onOpenAd }: { product: MyProduct; onOpenAd: 
             const thumbStyle = d.thumbnailUrl
               ? { backgroundImage: `url(${d.thumbnailUrl})`, backgroundSize: "cover" as const }
               : undefined;
+            // 没缩略图时，用品牌名首字母拼色块 fallback（替代纯灰块）
+            const fallbackInitial = (d.advertiserName ?? d.title ?? "?").slice(0, 1).toUpperCase();
             // source 徽章：Meta 蓝 / TikTok 黑粉 / Google 绿
             // 优先用 d.source（DB ads.source 原值），fallback 用 scraped.platform 推
             const sourceKey = d.source ?? (scraped.platform === "Meta" ? "meta" : scraped.platform === "TikTok" ? "tiktok" : "google");
@@ -398,12 +451,12 @@ function ScrapedAdsPanel({ product, onOpenAd }: { product: MyProduct; onOpenAd: 
                 key={`${scraped.adId}-${scraped.platform}`}
                 type="button"
                 className="myp-ad-card"
-                onClick={() => {
-                  if (d.snapshotUrl) window.open(d.snapshotUrl, "_blank", "noopener,noreferrer");
-                  else onOpenAd(scraped.adId);
-                }}
+                onClick={() => onOpenAd(scraped)}
               >
-                <div className="myp-ad-thumb" style={thumbStyle}>
+                <div className={`myp-ad-thumb ${d.thumbnailUrl ? "" : `myp-ad-thumb-fallback-${sourceKey}`}`} style={thumbStyle}>
+                  {d.thumbnailUrl ? null : (
+                    <div className="myp-ad-thumb-letter">{fallbackInitial}</div>
+                  )}
                   <div className="myp-ad-region">
                     {d.regionFlag ?? "🌐"} {d.region ?? ""}
                   </div>
@@ -448,7 +501,7 @@ function ScrapedAdsPanel({ product, onOpenAd }: { product: MyProduct; onOpenAd: 
               key={`${scraped.adId}-${scraped.platform}`}
               type="button"
               className="myp-ad-card"
-              onClick={() => onOpenAd(scraped.adId)}
+              onClick={() => onOpenAd(scraped)}
             >
               <div className={`myp-ad-thumb ${ad.thumbClass ?? ""}`}>
                 <div className="myp-ad-region">

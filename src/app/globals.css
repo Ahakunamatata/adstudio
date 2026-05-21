@@ -6735,6 +6735,63 @@ dd {
   text-align: center;
 }
 
+/* DbAdDetailModal 专属：完整文案、CTA + landing、双按钮 actions */
+.dbad-modal-body-texts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.dbad-modal-body-block {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+  padding: 10px 12px;
+  background: var(--panel);
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.dbad-modal-cta-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.dbad-modal-landing-link {
+  font-size: 12px;
+  color: var(--lime);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+.dbad-modal-landing-link:hover {
+  text-decoration: underline;
+}
+.dbad-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dbad-modal-secondary-link {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-decoration: none;
+  transition: border-color 120ms ease;
+}
+.dbad-modal-secondary-link:hover {
+  border-color: var(--lime);
+  color: var(--lime);
+}
+
 @media (max-width: 880px) {
   .topad-modal-body { grid-template-columns: 1fr; }
   .topad-modal-media { max-height: 360px; }
@@ -7482,6 +7539,29 @@ dd {
 }
 .myp-ad-source-google {
   background: #34a853; /* Google 绿 */
+}
+
+/* 缩略图 fallback：没有 thumbnail 时按 source 颜色 + 品牌首字母 */
+.myp-ad-thumb-letter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.5);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+.myp-ad-thumb-fallback-meta {
+  background: linear-gradient(135deg, #1877f2 0%, #0d4ea3 100%);
+}
+.myp-ad-thumb-fallback-tiktok {
+  background: linear-gradient(135deg, #25f4ee 0%, #fe2c55 100%);
+}
+.myp-ad-thumb-fallback-google {
+  background: linear-gradient(135deg, #34a853 0%, #ea4335 100%);
 }
 
 /* CTA + landing 行（Meta 富化广告会渲染出来） */

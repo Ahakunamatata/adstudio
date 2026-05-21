@@ -400,6 +400,79 @@ export function useMyProducts() {
     productsRef.current = products;
   });
 
+  // 记录哪些 product 已经触发过 auto-match，避免 effect 在 products 变化时
+  // 反复 fire 同一个产品的 match-ads。
+  const autoMatchedIdsRef = useRef<Set<string>>(new Set());
+
+  // Hydrate 完之后（含每次 products 变化），对有 inferredKeywords 但 scrapedAds
+  // 还空 + 没 auto-match 过的产品 fire 一次 match-ads，补回 scrapedAds。
+  // scrapedAds 还没存进 DB（刷新就丢），这一步从 ads + ad_embeddings 实时回填。
+  // 下个 sprint 用 product_ad_matches 表持久化后这段就可以删。
+  useEffect(() => {
+    if (!hydrated) return;
+    const candidates = products.filter(
+      (p) =>
+        !autoMatchedIdsRef.current.has(p.id) &&
+        p.scrapedAds.length === 0 &&
+        (p.inferredKeywords?.length ?? 0) > 0 &&
+        p.status !== "parsing" &&
+        p.status !== "scraping"
+    );
+    if (candidates.length === 0) return;
+    // 立刻标记防止本 effect 在 setProducts 后再次进入还把这些当 candidate
+    for (const p of candidates) autoMatchedIdsRef.current.add(p.id);
+    let cancelled = false;
+    void (async () => {
+      console.log(`[useMyProducts] auto-match ${candidates.length} product(s):`, candidates.map((p) => p.name));
+      for (const product of candidates) {
+        if (cancelled) return;
+        try {
+          const dbAds = await fetchMatchedAdsFromDb({
+            keywords: product.inferredKeywords ?? [],
+            industry: product.inferredIndustry,
+            limit: 12
+          });
+          console.log(
+            `[useMyProducts] auto-match "${product.name}": got ${dbAds.length} ads`
+          );
+          if (cancelled || dbAds.length === 0) continue;
+          const matched = (product.inferredKeywords ?? []).slice(0, 2);
+          const scrapedAds = dbAds
+            .slice(0, 8)
+            .map((ad, idx) => dbAdToScraped(ad, idx, matched));
+          const countByPlatform: Record<MyProductPlatform, number> = {
+            TikTok: 0,
+            Meta: 0,
+            Google: 0
+          };
+          for (const s of scrapedAds) countByPlatform[s.platform] += 1;
+          setProducts((prev) =>
+            prev.map((p) =>
+              p.id === product.id
+                ? {
+                    ...p,
+                    status: "done",
+                    scrapedAds,
+                    progress: [
+                      { platform: "TikTok", status: "done", count: countByPlatform.TikTok },
+                      { platform: "Meta", status: "done", count: countByPlatform.Meta },
+                      { platform: "Google", status: "done", count: countByPlatform.Google }
+                    ]
+                  }
+                : p
+            )
+          );
+        } catch (error) {
+          console.warn(`[useMyProducts] auto-match "${product.name}" failed:`, error);
+          // 失败别清 ref，避免无限重试
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, products]);
+
   useEffect(() => {
     const timers = timersRef.current;
     const controllers = controllersRef.current;
@@ -536,7 +609,9 @@ export function useMyProducts() {
             body: JSON.stringify({
               searchQueries,
               regions: ["US"],
-              sources: ["tiktok"]
+              // 同时投 tiktok + meta（Meta web 抓已上线，且当前 TikTok 矩阵
+              // 临时禁用，靠 meta 出货）。worker 会按 source 分发到对应 fetcher。
+              sources: ["tiktok", "meta"]
             })
           }
         );
