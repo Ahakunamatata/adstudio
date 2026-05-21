@@ -112,6 +112,8 @@ type MatchedAdFromApi = {
   landingPageUrl: string | null;
   ctaText: string | null;
   pageLikeCount: number | null;
+  // LLM rerank 后的"为什么推荐这条"chip 文案，中文 <35 字
+  recommendReason: string | null;
   deliveryStartAt: string | null;
   deliveryStopAt: string | null;
   firstSeenAt: string;
@@ -124,15 +126,21 @@ async function fetchMatchedAdsFromDb(payload: {
   industry?: string;
   sources?: Array<"meta" | "tiktok" | "google">;
   limit?: number;
+  // LLM rerank 上下文：产品名/介绍/痛点。喂给 Minimax 让它精排 + 写推荐理由 chip。
+  productName?: string;
+  cleanedIntro?: string;
+  cleanedPainPoints?: string;
+  // 默认 true 启用 LLM rerank（多 ~6-10s 延迟，但每条都有 reason chip）
+  rerank?: boolean;
 }): Promise<MatchedAdFromApi[]> {
-  // 15s 超时硬保护，防止 fetch 永远 hang 把 UI 锁死。
+  // 30s 超时（LLM rerank 要 5-12s + embed 1s + DB 1s + buffer）
   const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), 15_000);
+  const timeoutId = setTimeout(() => timeoutController.abort(), 30_000);
   try {
     const response = await fetch("/api/my-products/match-ads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...payload, limit: payload.limit ?? 12 }),
+      body: JSON.stringify({ ...payload, limit: payload.limit ?? 12, rerank: payload.rerank ?? true }),
       signal: timeoutController.signal
     });
     if (!response.ok) {
@@ -181,6 +189,7 @@ function dbAdToScraped(
       landingPageUrl: ad.landingPageUrl,
       ctaText: ad.ctaText,
       pageLikeCount: ad.pageLikeCount,
+      recommendReason: ad.recommendReason,
       deliveryStartAt: ad.deliveryStartAt,
       deliveryStopAt: ad.deliveryStopAt
     }
@@ -430,7 +439,12 @@ export function useMyProducts() {
           const dbAds = await fetchMatchedAdsFromDb({
             keywords: product.inferredKeywords ?? [],
             industry: product.inferredIndustry,
-            limit: 12
+            limit: 12,
+            // 喂给 LLM rerank 的产品上下文
+            productName: product.name,
+            cleanedIntro: product.intro || undefined,
+            cleanedPainPoints: product.painPoints || undefined,
+            rerank: true
           });
           console.log(
             `[useMyProducts] auto-match "${product.name}": got ${dbAds.length} ads`
@@ -539,7 +553,11 @@ export function useMyProducts() {
     const dbAds = await fetchMatchedAdsFromDb({
       keywords,
       industry,
-      limit: 12
+      limit: 12,
+      productName: snapshot.name,
+      cleanedIntro: snapshot.intro || undefined,
+      cleanedPainPoints: snapshot.painPoints || undefined,
+      rerank: true
     });
     const useDbAds = dbAds.length > 0;
     const scrapedAds: MyProductScrapedAd[] = useDbAds

@@ -6735,6 +6735,33 @@ dd {
   text-align: center;
 }
 
+/* AI 推荐理由 chip —— 详情弹窗里最突出位置 */
+.dbad-modal-reason {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, rgba(201, 255, 80, 0.1) 0%, rgba(201, 255, 80, 0.04) 100%);
+  border: 1px solid rgba(201, 255, 80, 0.3);
+  border-radius: 6px;
+}
+.dbad-modal-reason-icon {
+  font-size: 18px;
+  line-height: 1.2;
+}
+.dbad-modal-reason-label {
+  font-size: 11px;
+  color: var(--lime);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.dbad-modal-reason-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
 /* DbAdDetailModal 专属：完整文案、CTA + landing、双按钮 actions */
 .dbad-modal-body-texts {
   display: flex;
@@ -7562,6 +7589,22 @@ dd {
 }
 .myp-ad-thumb-fallback-google {
   background: linear-gradient(135deg, #34a853 0%, #ea4335 100%);
+}
+
+/* LLM rerank 推荐理由 chip —— 显示在卡片下方，绿色背景突出"AI 真的懂" */
+.myp-ad-reason {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--lime);
+  background: rgba(201, 255, 80, 0.08);
+  border: 1px solid rgba(201, 255, 80, 0.22);
+  border-radius: 4px;
+  padding: 5px 8px;
+  margin-top: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* CTA + landing 行（Meta 富化广告会渲染出来） */

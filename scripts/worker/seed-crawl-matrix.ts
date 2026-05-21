@@ -14,42 +14,79 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../src/lib/db";
 
+// 全局监控关键词矩阵：跨 10+ 出海主流品类的 30 个高频品类词。
+// 不要太具体（"PhoneGuard X3" 不行），要可被千百个广告主复用的概念词。
 const SEED_KEYWORDS = [
-  // 安防/家居
-  "anti theft",
-  "smart lock",
-  "security camera",
-  // 美容
+  // —— 美容 / 护肤 / 美妆（出海大类）——
   "skincare routine",
+  "anti aging",
   "hair growth",
-  // 健身/健康
+  "korean skincare",
+  "makeup tutorial",
+  // —— 健身 / 减肥 / 健康 ——
   "fitness app",
   "weight loss",
-  // 电商杂货
+  "meal kit",
+  "supplement",
+  "sleep tracker",
+  // —— 服饰 / 鞋包 ——
+  "shapewear",
+  "athleisure",
+  // —— 家居 / 厨房 / 清洁 ——
   "kitchen gadget",
   "cleaning hack",
-  // 数码
+  "smart home",
+  "home organizer",
+  // —— 数码 / 电子 ——
   "phone accessories",
-  // 服饰
-  "shapewear",
-  // App / SaaS
-  "ai writer",
-  // 户外
+  "wireless earbuds",
+  "power bank",
+  // —— 户外 / 露营 / 运动 ——
   "camping gear",
-  // 玩具/亲子
-  "kids learning"
+  "hiking gear",
+  // —— App / SaaS / AI 工具 ——
+  "ai writer",
+  "photo editor",
+  "video editor",
+  "language learning",
+  // —— 亲子 / 教育 ——
+  "kids learning",
+  // —— 安防 / 防盗（Meta 列敏感词，仅 TikTok）——
+  "anti theft",
+  "security camera",
+  "smart lock",
+  // —— 宠物 / 食品 ——
+  "pet supplies",
+  "dog toys",
+  "coffee subscription"
 ];
 
-const SEED_REGIONS = ["US", "GB", "DE"];
+// 出海主战场（按客户分布）：
+// US/GB/DE 已有，新加 JP（日本好货）/ IN（东南亚低价）/ BR（南美增长大盘）
+const SEED_REGIONS = ["US", "GB", "DE", "JP", "IN", "BR"];
 // Meta 不走 Graph API（App 没 Identity Verification），改走 Web 抓 Ad Library
 // 公开页面（metaAdLibraryFetcher.ts）。Google 留 Sprint C。
 const SEED_SOURCES: Array<"tiktok" | "meta" | "google"> = ["tiktok", "meta"];
 
+// Meta 对部分关键词标"敏感"（武器 / 防盗 / 监控）→ captcha 高发，
+// 这些只让 TikTok 跑，不投 Meta（避免浪费 worker 周期）。
+const META_SENSITIVE_KEYWORDS = new Set([
+  "anti theft",
+  "security camera",
+  "smart lock"
+]);
+
 async function main() {
   let inserted = 0;
   let skipped = 0;
+  let skippedSensitive = 0;
   for (const source of SEED_SOURCES) {
     for (const keyword of SEED_KEYWORDS) {
+      // 敏感词只投 TikTok，跳 Meta（Meta 会 captcha 浪费 worker）
+      if (source === "meta" && META_SENSITIVE_KEYWORDS.has(keyword)) {
+        skippedSensitive += SEED_REGIONS.length;
+        continue;
+      }
       for (const region of SEED_REGIONS) {
         try {
           const result = await db.execute<{ id: string }>(sql`
@@ -58,7 +95,7 @@ async function main() {
               next_run_at, notes
             )
             SELECT ${source}, ${keyword}, ${region}, 24, 0, 1, now(),
-              ${"seed-2026-05"}
+              ${"seed-2026-05-v2"}
             WHERE NOT EXISTS (
               SELECT 1 FROM crawl_matrix
               WHERE product_id IS NULL
@@ -79,7 +116,10 @@ async function main() {
       }
     }
   }
-  console.log(`crawl_matrix seed done: inserted=${inserted}, skipped(dup)=${skipped}`);
+  console.log(
+    `crawl_matrix seed done: inserted=${inserted}, skipped(dup)=${skipped}, skipped(sensitive on meta)=${skippedSensitive}`
+  );
+  // 总规模：30 keyword × 6 region × 2 source - 18 (meta 敏感) = 342 规则
   process.exit(0);
 }
 

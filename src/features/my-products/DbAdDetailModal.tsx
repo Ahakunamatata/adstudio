@@ -108,6 +108,17 @@ export function DbAdDetailModal({ scraped, onClose, onCloneInAgent }: DbAdDetail
               <div className="topad-modal-brand">{d.advertiserName ?? "(未知广告主)"}</div>
             </div>
 
+            {/* LLM 推荐理由 —— 详情页最显眼位置 */}
+            {d.recommendReason ? (
+              <div className="dbad-modal-reason">
+                <span className="dbad-modal-reason-icon">💡</span>
+                <div>
+                  <div className="dbad-modal-reason-label">AI 推荐理由</div>
+                  <div className="dbad-modal-reason-text">{d.recommendReason}</div>
+                </div>
+              </div>
+            ) : null}
+
             {/* 完整 body 文案 —— DB ad 的精华 */}
             {d.creativeBodies.length > 0 ? (
               <div className="topad-modal-section">

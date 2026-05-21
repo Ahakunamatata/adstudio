@@ -472,6 +472,12 @@ function ScrapedAdsPanel({ product, onOpenAd }: { product: MyProduct; onOpenAd: 
                     {likes ? ` · ${likes} likes` : ""}
                     {d.deliveryStartAt ? ` · ${d.deliveryStartAt.slice(0, 10)} 起投` : ""}
                   </div>
+                  {/* LLM rerank 推荐理由 chip —— "AI 真的懂"的核心展示 */}
+                  {d.recommendReason ? (
+                    <div className="myp-ad-reason" title={d.recommendReason}>
+                      💡 {d.recommendReason}
+                    </div>
+                  ) : null}
                   {(d.ctaText || d.landingPageUrl) ? (
                     <div className="myp-ad-cta-row">
                       {d.ctaText ? <span className="myp-ad-cta">{d.ctaText}</span> : null}

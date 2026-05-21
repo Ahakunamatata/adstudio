@@ -3,6 +3,37 @@ import { z } from "zod";
 import { and, desc, inArray, or, sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { embed, EMBEDDING_DIM } from "@/lib/llm/embedding";
+import {
+  minimaxChatCompletion,
+  MinimaxApiError,
+  MinimaxConfigError
+} from "@/lib/llm/minimax";
+
+// 提取 JSON 数组（extractJsonObject 只识对象不识数组，rerank 必须用数组）
+function extractJsonArray<T = unknown>(text: string): T[] | null {
+  const trimmed = text.trim();
+  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = fenceMatch ? fenceMatch[1].trim() : trimmed;
+  const start = body.indexOf("[");
+  if (start === -1) return null;
+  let depth = 0;
+  for (let i = start; i < body.length; i += 1) {
+    const ch = body[i];
+    if (ch === "[") depth += 1;
+    else if (ch === "]") {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          const arr = JSON.parse(body.slice(start, i + 1)) as T[];
+          return Array.isArray(arr) ? arr : null;
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
 
 // POST /api/my-products/match-ads
 //
@@ -25,8 +56,21 @@ const requestSchema = z.object({
     .array(z.enum(["meta", "tiktok", "google"]))
     .max(3)
     .optional(),
-  limit: z.number().int().min(1).max(100).default(20)
+  limit: z.number().int().min(1).max(100).default(20),
+  // 用户产品介绍 / 痛点，喂给 LLM rerank prompt（向量检索只看 keywords，
+  // 加上产品上下文 LLM 能更准判断"这条对你产品到底有没有用"）。
+  cleanedIntro: z.string().max(800).optional(),
+  cleanedPainPoints: z.string().max(600).optional(),
+  productName: z.string().max(120).optional(),
+  // LLM rerank 开关：true 时先 vector 拿 top 30，再 LLM 评分 + 写 reason
+  // 重排取 top {limit}。false 时纯向量检索（快，~300ms）。默认 true。
+  rerank: z.boolean().default(true)
 });
+
+// LLM rerank 时多取一些候选喂给 LLM 评分。30 是 sweet spot：
+// - 太少（10）→ LLM 无法挑出真正的 best
+// - 太多（50+）→ Minimax 一次 prompt 太长，输入 token 起飞
+const RERANK_CANDIDATE_LIMIT = 30;
 
 const PUBLISHER_TO_PLATFORM: Record<string, string> = {
   facebook: "Facebook",
@@ -133,8 +177,152 @@ function shapeAd(row: AdSearchRow) {
     deliveryStartAt: toIsoOrNull(row.deliveryStartAt),
     deliveryStopAt: toIsoOrNull(row.deliveryStopAt),
     firstSeenAt: toIsoOrNull(row.firstSeenAt) ?? new Date().toISOString(),
-    relevanceScore // null 表示走的关键词兜底；前端可自己生成 fallback 分数
+    relevanceScore, // null 表示走的关键词兜底；前端可自己生成 fallback 分数
+    // LLM rerank 后这里会被 reason chip 填上（"赢在 hook X，跟你产品 Y 卖点对得上"）
+    recommendReason: null as string | null
   };
+}
+
+// ──────────────────────── LLM rerank ─────────────────────────
+//
+// 输入：候选 ads（top 30 by vector）+ 用户产品上下文
+// 输出：每条 ad 的 (score, reason)。重排取 top N。
+//
+// 设计：一次 batch LLM 调用，所有候选一起喂。
+//   - input: ~3000-5000 tokens（30 条 ad 摘要 + 产品上下文）
+//   - output: ~800-1500 tokens（N 个评分 + 中文 reason）
+//   - 耗时：5-12s（M2.7 reasoning）
+
+type RerankCandidate = {
+  index: number;
+  ad: ReturnType<typeof shapeAd>;
+};
+
+type RerankResult = { index: number; score: number; reason: string };
+
+const RERANK_SYSTEM_PROMPT = `你是出海广告投放策略分析师。我会给你：
+1. 一个客户产品的画像（产品名 / 介绍 / 痛点 / 关键词）
+2. N 条候选爆款广告（每条带广告主 / hook 文案 / 落地页 / CTA / 平台等信息）
+
+你的任务：判断每条候选广告**对这个客户产品**有多有用，从两个维度：
+- 相关性（0-100 分）：这条广告的卖点 / 受众 / 场景跟客户产品有多接近？数字越高越对得上
+- 推荐理由（**中文**，<35 字）：用一句话讲清楚"赢在哪 + 跟客户产品的哪一点对得上"。
+  例："Hook 用'2 周减脂'数字效应强，跟你的减肥承诺正面对线"
+  例："CTA 用 Install now + Amazon 落地页，正好是 App 投放范式"
+
+输出**仅** JSON 数组，不要 markdown，不要解释。结构：
+[
+  {"index": 1, "score": 92, "reason": "..."},
+  {"index": 2, "score": 78, "reason": "..."},
+  ...
+]
+- 必须返回所有 N 个候选（不要遗漏）
+- score 是整数 0-100
+- reason 严格 <35 字中文`;
+
+type RerankProduct = {
+  productName?: string;
+  industry?: string;
+  keywords?: string[];
+  cleanedIntro?: string;
+  cleanedPainPoints?: string;
+};
+
+function buildRerankPrompt(
+  product: RerankProduct,
+  candidates: RerankCandidate[]
+): string {
+  const lines: string[] = [];
+  lines.push("【客户产品画像】");
+  if (product.productName) lines.push(`产品名：${product.productName}`);
+  if (product.industry) lines.push(`行业：${product.industry}`);
+  if (product.keywords?.length) lines.push(`关键词：${product.keywords.join(", ")}`);
+  if (product.cleanedIntro) lines.push(`介绍：${product.cleanedIntro}`);
+  if (product.cleanedPainPoints) lines.push(`痛点：${product.cleanedPainPoints}`);
+  lines.push("");
+  lines.push(`【候选广告（${candidates.length} 条）】`);
+  for (const { index, ad } of candidates) {
+    const hook = (ad.creativeBodies[0] ?? ad.title ?? "").slice(0, 180);
+    const landing = ad.landingPageUrl
+      ? (() => {
+          try {
+            return new URL(ad.landingPageUrl).hostname.replace(/^www\./, "");
+          } catch {
+            return "";
+          }
+        })()
+      : "";
+    lines.push(
+      `[${index}] ${ad.advertiserName ?? ad.source} (${ad.source}/${ad.region ?? "?"}, ${
+        ad.pageLikeCount ? `${(ad.pageLikeCount / 1000).toFixed(0)}K likes` : "no likes"
+      })`
+    );
+    if (hook) lines.push(`    hook: ${hook}`);
+    if (ad.ctaText || landing)
+      lines.push(`    CTA: ${ad.ctaText ?? "?"} → ${landing || "?"}`);
+  }
+  return lines.join("\n");
+}
+
+async function llmRerank(
+  product: RerankProduct,
+  ads: ReturnType<typeof shapeAd>[],
+  limit: number
+): Promise<{ rerankedAds: ReturnType<typeof shapeAd>[]; usedRerank: boolean }> {
+  if (ads.length <= 1) return { rerankedAds: ads.slice(0, limit), usedRerank: false };
+  const candidates: RerankCandidate[] = ads.map((ad, i) => ({ index: i + 1, ad }));
+  const userPrompt = buildRerankPrompt(product, candidates);
+
+  try {
+    const completion = await minimaxChatCompletion({
+      messages: [
+        { role: "system", content: RERANK_SYSTEM_PROMPT },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.2,
+      maxTokens: 4096,
+      responseFormat: "json"
+    });
+    const parsed = extractJsonArray<RerankResult>(completion.content);
+    if (!parsed) {
+      console.warn(
+        "[match-ads/rerank] LLM did not return JSON array, content preview:",
+        completion.content.slice(0, 200)
+      );
+      return { rerankedAds: ads.slice(0, limit), usedRerank: false };
+    }
+    const byIndex = new Map<number, RerankResult>();
+    for (const r of parsed) {
+      if (!r || typeof r.index !== "number" || typeof r.score !== "number") continue;
+      byIndex.set(r.index, { index: r.index, score: r.score, reason: r.reason ?? "" });
+    }
+    const merged = candidates.map(({ index, ad }) => {
+      const r = byIndex.get(index);
+      if (!r) return { ...ad };
+      return {
+        ...ad,
+        // LLM score 覆盖 cosine 距离换算的 score
+        relevanceScore: Math.max(0, Math.min(100, Math.round(r.score))),
+        recommendReason:
+          r.reason && r.reason.trim().length > 0 ? r.reason.trim() : null
+      };
+    });
+    merged.sort((a, b) => (b.relevanceScore ?? 0) - (a.relevanceScore ?? 0));
+    return { rerankedAds: merged.slice(0, limit), usedRerank: true };
+  } catch (error) {
+    if (error instanceof MinimaxApiError || error instanceof MinimaxConfigError) {
+      console.warn(
+        `[match-ads/rerank] LLM call failed (${error.constructor.name}):`,
+        error.message
+      );
+    } else {
+      console.warn(
+        "[match-ads/rerank] unexpected error, falling back:",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+    return { rerankedAds: ads.slice(0, limit), usedRerank: false };
+  }
 }
 
 function buildQueryText(
@@ -166,7 +354,8 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  const { keywords, industry, sources, limit } = parsed.data;
+  const { keywords, industry, sources, limit, cleanedIntro, cleanedPainPoints, productName, rerank } =
+    parsed.data;
 
   const queryText = buildQueryText(
     keywords.map((k) => k.trim()).filter((k) => k.length >= 2),
@@ -210,11 +399,33 @@ export async function POST(request: Request) {
             WHERE ads.status <> 'down'
             ${sourceFilter}
             ORDER BY ad_embeddings.embedding <=> ${vectorLiteral}::vector
-            LIMIT ${limit}
+            LIMIT ${rerank ? RERANK_CANDIDATE_LIMIT : limit}
           `);
           if (rows.length > 0) {
+            const shaped = rows.map(shapeAd);
+            if (rerank) {
+              // LLM 二次精排 + 推荐理由
+              const { rerankedAds, usedRerank } = await llmRerank(
+                {
+                  productName,
+                  industry,
+                  keywords,
+                  cleanedIntro,
+                  cleanedPainPoints
+                },
+                shaped,
+                limit
+              );
+              return NextResponse.json({
+                ads: rerankedAds,
+                mode: usedRerank ? "semantic+llm-rerank" : "semantic",
+                provider: embedResult.provider,
+                model: embedResult.model,
+                rerankUsed: usedRerank
+              });
+            }
             return NextResponse.json({
-              ads: rows.map(shapeAd),
+              ads: shaped.slice(0, limit),
               mode: "semantic",
               provider: embedResult.provider,
               model: embedResult.model

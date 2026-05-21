@@ -324,6 +324,8 @@ export const dbAdInlineSchema = z.object({
   landingPageUrl: z.string().nullable().optional(),
   ctaText: z.string().nullable().optional(),
   pageLikeCount: z.number().nullable().optional(),
+  // LLM rerank 后的"为什么推荐这条"推荐理由（中文，<35 字）
+  recommendReason: z.string().nullable().optional(),
   deliveryStartAt: z.string().nullable().optional(),
   deliveryStopAt: z.string().nullable().optional()
 });
