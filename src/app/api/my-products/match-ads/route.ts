@@ -64,7 +64,11 @@ const requestSchema = z.object({
   productName: z.string().max(120).optional(),
   // LLM rerank 开关：true 时先 vector 拿 top 30，再 LLM 评分 + 写 reason
   // 重排取 top {limit}。false 时纯向量检索（快，~300ms）。默认 true。
-  rerank: z.boolean().default(true)
+  rerank: z.boolean().default(true),
+  // 传入 productId 时，把 match 结果持久化到 product_ad_matches 表，
+  // 下次刷新直接 GET /api/my-products/[id]/matched-ads 拿缓存（< 100ms），
+  // 不用再跑 LLM rerank（~50s + 配额）。
+  persistForProductId: z.string().uuid().optional()
 });
 
 // LLM rerank 时多取一些候选喂给 LLM 评分。30 是 sweet spot：
@@ -354,8 +358,72 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  const { keywords, industry, sources, limit, cleanedIntro, cleanedPainPoints, productName, rerank } =
-    parsed.data;
+  const {
+    keywords,
+    industry,
+    sources,
+    limit,
+    cleanedIntro,
+    cleanedPainPoints,
+    productName,
+    rerank,
+    persistForProductId
+  } = parsed.data;
+
+  // 把 match 结果持久化到 product_ad_matches（异步 fire-and-forget，不阻塞返回）
+  async function persistMatches(ads: ReturnType<typeof shapeAd>[]) {
+    if (!persistForProductId || ads.length === 0) return;
+    try {
+      // 先把这个 product 的老 matches 清掉（确保只保留最新的 top N）
+      await db.execute(sql`
+        DELETE FROM product_ad_matches WHERE product_id = ${persistForProductId}
+      `);
+      // 批量 INSERT。matched_keywords 用 LLM 用的 keywords 子集做 placeholder。
+      // drizzle 的 sql template 把 JS string[] 当 spread 处理（变成 $4,$5,$6
+      // tuple），不是 text[]。要手动拼 PG array literal: '{"kw1","kw2"}'。
+      const matchedKeywordsArr = keywords.slice(0, 3);
+      const matchedKeywordsLiteral =
+        "{" +
+        matchedKeywordsArr
+          .map((k) => `"${k.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`)
+          .join(",") +
+        "}";
+      for (const ad of ads) {
+        try {
+          await db.execute(sql`
+            INSERT INTO product_ad_matches (
+              product_id, ad_id, relevance_score, matched_keywords,
+              recommend_reason, surfaced_at
+            )
+            VALUES (
+              ${persistForProductId}, ${ad.id}, ${ad.relevanceScore ?? 0},
+              ${matchedKeywordsLiteral}::text[],
+              ${ad.recommendReason},
+              now()
+            )
+            ON CONFLICT (product_id, ad_id) DO UPDATE SET
+              relevance_score = EXCLUDED.relevance_score,
+              recommend_reason = EXCLUDED.recommend_reason,
+              surfaced_at = EXCLUDED.surfaced_at
+          `);
+        } catch (e) {
+          console.warn(
+            `[match-ads/persist] failed for ${ad.id}:`,
+            e instanceof Error ? e.message : String(e)
+          );
+        }
+      }
+      // 顺手更新 my_products.last_match_run_at 让前端能判断"上次 match 是啥时候"
+      await db.execute(sql`
+        UPDATE my_products SET last_match_run_at = now() WHERE id = ${persistForProductId}
+      `);
+    } catch (e) {
+      console.warn(
+        "[match-ads/persist] outer failure:",
+        e instanceof Error ? e.message : String(e)
+      );
+    }
+  }
 
   const queryText = buildQueryText(
     keywords.map((k) => k.trim()).filter((k) => k.length >= 2),
@@ -416,19 +484,26 @@ export async function POST(request: Request) {
                 shaped,
                 limit
               );
+              // 持久化（必须 await，否则 Next.js 函数返回后 promise 被中断）
+              // 给用户加 100-300ms 延迟换"下次刷新秒开"的体验，值
+              await persistMatches(rerankedAds);
               return NextResponse.json({
                 ads: rerankedAds,
                 mode: usedRerank ? "semantic+llm-rerank" : "semantic",
                 provider: embedResult.provider,
                 model: embedResult.model,
-                rerankUsed: usedRerank
+                rerankUsed: usedRerank,
+                persisted: !!persistForProductId
               });
             }
+            const sliced = shaped.slice(0, limit);
+            await persistMatches(sliced);
             return NextResponse.json({
-              ads: shaped.slice(0, limit),
+              ads: sliced,
               mode: "semantic",
               provider: embedResult.provider,
-              model: embedResult.model
+              model: embedResult.model,
+              persisted: !!persistForProductId
             });
           }
         } catch (error) {

@@ -121,6 +121,24 @@ type MatchedAdFromApi = {
 
 type MatchAdsResponse = { ads?: MatchedAdFromApi[]; error?: string };
 
+// 优先调 cached endpoint /api/my-products/[id]/matched-ads（< 100ms 纯 SQL）。
+// 拿到非空结果直接返回，没结果再 fallback 到 /match-ads 跑 LLM rerank。
+async function fetchCachedMatches(productId: string): Promise<MatchedAdFromApi[] | null> {
+  try {
+    const response = await fetch(`/api/my-products/${productId}/matched-ads`, {
+      method: "GET"
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { ads?: MatchedAdFromApi[]; cached?: boolean };
+    if (data.cached && (data.ads?.length ?? 0) > 0) {
+      return data.ads ?? [];
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchMatchedAdsFromDb(payload: {
   keywords: string[];
   industry?: string;
@@ -132,10 +150,12 @@ async function fetchMatchedAdsFromDb(payload: {
   cleanedPainPoints?: string;
   // 默认 true 启用 LLM rerank（多 ~6-10s 延迟，但每条都有 reason chip）
   rerank?: boolean;
+  // 传入后端会把结果持久化到 product_ad_matches，下次走 cached endpoint
+  persistForProductId?: string;
 }): Promise<MatchedAdFromApi[]> {
-  // 30s 超时（LLM rerank 要 5-12s + embed 1s + DB 1s + buffer）
+  // 60s 超时（LLM rerank 要 5-50s + embed 1s + DB 1s + buffer）
   const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), 30_000);
+  const timeoutId = setTimeout(() => timeoutController.abort(), 60_000);
   try {
     const response = await fetch("/api/my-products/match-ads", {
       method: "POST",
@@ -436,19 +456,28 @@ export function useMyProducts() {
       for (const product of candidates) {
         if (cancelled) return;
         try {
-          const dbAds = await fetchMatchedAdsFromDb({
-            keywords: product.inferredKeywords ?? [],
-            industry: product.inferredIndustry,
-            limit: 12,
-            // 喂给 LLM rerank 的产品上下文
-            productName: product.name,
-            cleanedIntro: product.intro || undefined,
-            cleanedPainPoints: product.painPoints || undefined,
-            rerank: true
-          });
-          console.log(
-            `[useMyProducts] auto-match "${product.name}": got ${dbAds.length} ads`
-          );
+          // 1) 先看 product_ad_matches 有没有缓存（~50ms）
+          let dbAds = await fetchCachedMatches(product.id);
+          if (dbAds && dbAds.length > 0) {
+            console.log(
+              `[useMyProducts] auto-match "${product.name}": cached ${dbAds.length} ads`
+            );
+          } else {
+            // 2) 没缓存 → 跑完整 match-ads（LLM rerank + 持久化）
+            dbAds = await fetchMatchedAdsFromDb({
+              keywords: product.inferredKeywords ?? [],
+              industry: product.inferredIndustry,
+              limit: 12,
+              productName: product.name,
+              cleanedIntro: product.intro || undefined,
+              cleanedPainPoints: product.painPoints || undefined,
+              rerank: true,
+              persistForProductId: product.id
+            });
+            console.log(
+              `[useMyProducts] auto-match "${product.name}": fresh ${dbAds.length} ads (persisted)`
+            );
+          }
           if (cancelled || dbAds.length === 0) continue;
           const matched = (product.inferredKeywords ?? []).slice(0, 2);
           const scrapedAds = dbAds
@@ -557,7 +586,9 @@ export function useMyProducts() {
       productName: snapshot.name,
       cleanedIntro: snapshot.intro || undefined,
       cleanedPainPoints: snapshot.painPoints || undefined,
-      rerank: true
+      rerank: true,
+      // 新爬完跑一次 match-ads 同时持久化 → 后续刷新走 cache
+      persistForProductId: id
     });
     const useDbAds = dbAds.length > 0;
     const scrapedAds: MyProductScrapedAd[] = useDbAds

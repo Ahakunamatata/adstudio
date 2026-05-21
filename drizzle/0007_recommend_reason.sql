@@ -1,0 +1,1 @@
+ALTER TABLE "product_ad_matches" ADD COLUMN "recommend_reason" text;

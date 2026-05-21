@@ -199,6 +199,9 @@ export const productAdMatches = pgTable(
       .references(() => ads.id, { onDelete: "cascade" }),
     relevanceScore: integer("relevance_score").notNull(),
     matchedKeywords: text("matched_keywords").array().default(sql`'{}'::text[]`),
+    // LLM rerank 给的"为什么推这条"中文一句话（<35 字）
+    // 持久化省得每次刷新都重新跑 LLM（一次 50s + Minimax 配额）
+    recommendReason: text("recommend_reason"),
     userFeedback: userFeedbackEnum("user_feedback"),
     surfacedAt: timestamp("surfaced_at", { withTimezone: true })
       .defaultNow()
