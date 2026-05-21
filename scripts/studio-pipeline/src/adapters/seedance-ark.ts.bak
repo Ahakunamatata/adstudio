@@ -1,0 +1,161 @@
+// ============================================================
+// Volcengine Ark · Seedance 2.0 Adapter
+// ============================================================
+// 异步任务模式：
+//   1. POST {base}/contents/generations/tasks  → 拿 task_id
+//   2. 轮询 GET {base}/contents/generations/tasks/{task_id}
+//   3. status === 'succeeded' 时拿到 video_url，24h 内下载
+//
+// 文档：
+//   https://www.volcengine.com/docs/82379/1520757
+//   https://www.volcengine.com/docs/82379/2291680
+//
+// 用 native fetch（Node 18+），不引第三方 SDK，避免依赖。
+
+import fs from "node:fs";
+import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+
+const ARK_BASE = process.env.ARK_BASE_URL ?? "https://ark.cn-beijing.volces.com/api/v3";
+const ARK_KEY = process.env.ARK_API_KEY ?? "";
+const ARK_MODEL = process.env.ARK_MODEL_ID ?? "doubao-seedance-2-0-260128";
+const POLL_INTERVAL = (Number(process.env.POLL_INTERVAL_SEC) || 10) * 1000;
+const TASK_TIMEOUT = (Number(process.env.TASK_TIMEOUT_SEC) || 600) * 1000;
+
+export interface ArkSubmitInput {
+  prompt: string;
+  /** 图生视频：传 keyframe 公网 URL；不传则文生视频 */
+  image_url?: string;
+  /** 9:16 / 16:9 / 4:5 / 1:1 / 21:9 */
+  aspect_ratio?: string;
+  /** 默认 5s；4-15s */
+  duration_seconds?: number;
+  /** 默认 1080p */
+  resolution?: "720p" | "1080p" | "2k";
+}
+
+export interface ArkSubmitResult {
+  task_id: string;
+}
+
+export interface ArkQueryResult {
+  task_id: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  /** succeeded 时存在 */
+  video_url?: string;
+  error?: string;
+}
+
+function assertKey(): void {
+  if (!ARK_KEY) {
+    throw new Error(
+      "ARK_API_KEY 未配置。请在 .env 里填入：\n" +
+        "  ARK_API_KEY=your-key-here\n" +
+        "获取方式：https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey"
+    );
+  }
+}
+
+/**
+ * 提交一个生成任务到 Ark。
+ * 注意：Ark 的 prompt 里可以把"--ratio 9:16 --resolution 1080p"作为后缀直接拼上，
+ * 也可以走 content[].text 的方式。这里采用「正文里加参数后缀」的简洁写法，
+ * 跟 Seedance 官方教程示例一致。
+ */
+export async function submit(input: ArkSubmitInput): Promise<ArkSubmitResult> {
+  assertKey();
+
+  // Ark 的参数拼写约定：在 text 后面用 --key value 的形式
+  // 参考：https://www.volcengine.com/docs/82379/2291680
+  const suffixes: string[] = [];
+  if (input.aspect_ratio) suffixes.push(`--ratio ${input.aspect_ratio}`);
+  if (input.duration_seconds) suffixes.push(`--duration ${input.duration_seconds}`);
+  if (input.resolution) suffixes.push(`--resolution ${input.resolution}`);
+  const promptWithParams =
+    input.prompt + (suffixes.length ? " " + suffixes.join(" ") : "");
+
+  const content: any[] = [{ type: "text", text: promptWithParams }];
+  if (input.image_url) {
+    content.push({
+      type: "image_url",
+      image_url: { url: input.image_url },
+      role: "first_frame",
+    });
+  }
+
+  const body = {
+    model: ARK_MODEL,
+    content,
+  };
+
+  const res = await fetch(`${ARK_BASE}/contents/generations/tasks`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${ARK_KEY}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Ark submit failed (${res.status}): ${text}`);
+  }
+
+  const data = (await res.json()) as { id?: string; task_id?: string };
+  const task_id = data.id ?? data.task_id;
+  if (!task_id) throw new Error(`Ark submit returned no task_id: ${JSON.stringify(data)}`);
+  return { task_id };
+}
+
+/** 查询一次任务状态 */
+export async function query(task_id: string): Promise<ArkQueryResult> {
+  assertKey();
+  const res = await fetch(`${ARK_BASE}/contents/generations/tasks/${task_id}`, {
+    headers: { Authorization: `Bearer ${ARK_KEY}` },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Ark query failed (${res.status}): ${text}`);
+  }
+  const data = (await res.json()) as any;
+  // 兼容两种返回结构：直接 status，或 content[0].video_url
+  const status = (data.status ?? "running").toLowerCase() as ArkQueryResult["status"];
+  const video_url: string | undefined =
+    data?.content?.video_url ??
+    data?.video_url ??
+    data?.content?.[0]?.video_url;
+  return {
+    task_id,
+    status,
+    video_url,
+    error: data?.error?.message ?? data?.error,
+  };
+}
+
+/** 轮询到结束态。返回最终结果。 */
+export async function waitForCompletion(
+  task_id: string,
+  onTick?: (q: ArkQueryResult) => void
+): Promise<ArkQueryResult> {
+  const t0 = Date.now();
+  while (true) {
+    if (Date.now() - t0 > TASK_TIMEOUT) {
+      throw new Error(`Task ${task_id} timeout after ${TASK_TIMEOUT}ms`);
+    }
+    const q = await query(task_id);
+    onTick?.(q);
+    if (q.status === "succeeded") return q;
+    if (q.status === "failed" || q.status === "cancelled") return q;
+    await sleep(POLL_INTERVAL);
+  }
+}
+
+/** 下载视频到本地路径 */
+export async function downloadVideo(url: string, dest: string): Promise<void> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Download failed (${res.status}): ${url}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.writeFileSync(dest, buf);
+}

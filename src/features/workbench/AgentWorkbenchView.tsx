@@ -290,7 +290,7 @@ export function AgentWorkbenchView({ active, session, onSessionChange, onNodeOpe
           </div>
         </aside>
 
-        <WorkbenchCanvas session={session} onNodeOpen={onNodeOpen} />
+        <WorkbenchCanvas key={session.cloneSource?.topAdId ?? "default"} session={session} onNodeOpen={onNodeOpen} />
       </div>
     </section>
   );

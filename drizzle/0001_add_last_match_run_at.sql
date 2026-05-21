@@ -1,0 +1,1 @@
+ALTER TABLE "my_products" ADD COLUMN "last_match_run_at" timestamp with time zone;

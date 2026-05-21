@@ -6,7 +6,7 @@ import { templateCategories, templates } from "@/lib/mock-data";
 import { TemplateCard } from "@/features/templates/TemplateCard";
 
 type TemplateShowcaseProps = {
-  onUseTemplate: (templateId: string) => void;
+  onOpenTemplate: (templateId: string) => void;
 };
 
 const templateVariants = ["Hook", "口播版", "商品演示", "对比版", "转化版", "本地化", "短 CTA", "开场测试"];
@@ -33,7 +33,7 @@ function buildCategoryTemplates(categoryId: string) {
   });
 }
 
-export function TemplateShowcase({ onUseTemplate }: TemplateShowcaseProps) {
+export function TemplateShowcase({ onOpenTemplate }: TemplateShowcaseProps) {
   const [activeCategory, setActiveCategory] = useState("tiktok");
   const categorySections = useMemo(
     () =>
@@ -104,7 +104,7 @@ export function TemplateShowcase({ onUseTemplate }: TemplateShowcaseProps) {
               </div>
               <div className="template-grid">
                 {category.templates.map((item) => (
-                  <TemplateCard key={item.key} template={item.template} onUse={onUseTemplate} />
+                  <TemplateCard key={item.key} template={item.template} onOpen={onOpenTemplate} />
                 ))}
               </div>
             </section>

@@ -463,3 +463,14 @@ Canvas 需要优先支持这些动作：
 ```
 
 不要把临时想法和未确认方案混进正式决策。未确认内容可以放到“待确认”小节。
+
+## 2026-05-17 模板素材 Schema 决策
+
+- 背景：模板模块需要支持“新用户提交产品链接后推荐可用广告模板”，同时区分真实爆款广告和可直接生成的 AI 模板。
+- 决策：模板素材分成两条路径：AI 模板库负责可公开 prompt、可替换槽位、可直接进入 Ad Video / Ad Image 的模板；爆款广告库负责展示真实投放广告和效果数据，并通过 Agent 复刻流程完成客观拆解和迁移。
+- 决策：所有视频先进入统一的客观拆解底座，记录时间码、画面、对白、字幕、镜头、产品露出、CTA、指标和风险；之后按视频形态映射到固定脚本 schema，而不是让大模型自由输出。
+- 决策：第一版固定 5 个脚本 schema：`ugc_demo`、`app_demo_hook`、`story_hook_cta`、`cinematic_tvc`、`replicate_ad`。
+- 决策：Topview 风格的“绿色字可编辑”必须落成数据结构。固定文本、可编辑槽位、参考素材分别用 `text`、`slot`、`asset` token 表达，UI 只是这些 token 的渲染结果。
+- 影响模块：`src/lib/mock-data/templates.ts`、`src/lib/domain/schemas.ts`、`src/features/templates`、`src/components/app-shell/AdStudioApp.tsx`，以及后续 Agent 复刻输入协议。
+- 后续动作：先做 AI 模板库详情弹窗、绿色槽位编辑和 mock 数据；真实爆款广告库、视频理解拆解和外部数据源放到下一阶段。
+- 详细协议：见 `AD_STUDIO_TEMPLATE_SCHEMA.md`。

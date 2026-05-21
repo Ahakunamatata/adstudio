@@ -1,0 +1,22 @@
+[Unit]
+Description=Ad Studio crawl-matrix → crawl_jobs expander (one-shot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/adstudio
+ExecStart=/root/adstudio/node_modules/.bin/tsx --env-file=.env.local scripts/worker/expand-pool.ts
+
+# 不让一次 run 卡死整个 timer cycle
+TimeoutStartSec=120
+
+# 限制内存
+MemoryMax=256M
+
+StandardOutput=append:/var/log/adstudio/expand-pool.out.log
+StandardError=append:/var/log/adstudio/expand-pool.err.log
+
+[Install]
+WantedBy=multi-user.target

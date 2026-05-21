@@ -8,8 +8,10 @@ import {
   generationDefaults,
   getDefaultGenerationParamValues,
   getGenerationModel,
-  templateMap
+  templateMap,
+  topAdMap
 } from "@/lib/mock-data";
+import { toCloneSource } from "@/features/workbench/cloneCanvas";
 import { AgentSetupView } from "@/features/agent/AgentSetupView";
 import { AgentView } from "@/features/agent/AgentView";
 import { createAgentSession } from "@/features/agent/agent-session";
@@ -17,6 +19,7 @@ import { AssetsView } from "@/features/assets/AssetsView";
 import { GenerationView } from "@/features/generation/GenerationView";
 import type { GenerationKind, GenerationModeKey, GenerationSlotKey, GenerationState, SingleGenerationState } from "@/features/generation/types";
 import { HomeView } from "@/features/home/HomeView";
+import { TemplateDetailModal } from "@/features/templates/TemplateDetailModal";
 import { TemplatesView } from "@/features/templates/TemplatesView";
 import { AgentWorkbenchView } from "@/features/workbench/AgentWorkbenchView";
 import { AppShell } from "./AppShell";
@@ -74,9 +77,11 @@ export function AdStudioApp() {
   const [agentSession, setAgentSession] = useState<AgentSession>(() => createAgentSession("clone", "Family Locator"));
   const [generationState, setGenerationState] = useState<GenerationState>(() => createInitialGenerationState());
   const [drawerNode, setDrawerNode] = useState<CanvasNode | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [toastText, setToastText] = useState("已套用模板");
   const [toastVisible, setToastVisible] = useState(false);
   const toastTimer = useRef<number | null>(null);
+  const selectedTemplate = selectedTemplateId ? templateMap[selectedTemplateId] ?? null : null;
 
   function showToast(text: string) {
     setToastText(text);
@@ -119,7 +124,7 @@ export function AdStudioApp() {
     goRoute("workbench");
   }
 
-  function applyTemplate(templateId: string) {
+  function applyTemplate(templateId: string, promptOverride?: string) {
     const template = templateMap[templateId];
     if (!template) return;
     const modelId = getTemplateModelId(template.route, template.recommendedModel);
@@ -130,7 +135,7 @@ export function AdStudioApp() {
       ...current,
       [template.route]: {
         ...current[template.route],
-        prompt: template.prompt,
+        prompt: promptOverride ?? template.prompt,
         modelId,
         modeKey: model.modeKeys.includes(modeKey) ? modeKey : model.defaultModeKey,
         paramValues: {
@@ -143,6 +148,44 @@ export function AdStudioApp() {
     }));
     goRoute(template.route);
     showToast(template.toast);
+  }
+
+  function startWinningAdReplication(adTitle: string, prompt: string) {
+    const session = createAgentSession("clone", selectedProduct, prompt);
+    setSetupMode("clone");
+    setAgentSession({
+      ...session,
+      competitor: adTitle,
+      focus: ["Hook", "脚本逻辑", "CTA"],
+      currentStepIndex: 2
+    });
+    goRoute("workbench");
+    showToast("已把爆款广告带入 Agent 复刻任务");
+  }
+
+  // 「在 Agent 中复刻」主入口：以一条 TopAd 为来源直接打开 Workbench，
+  // 跳过 setup wizard，并预创建 5 个复刻节点（由 WorkbenchCanvas 通过 session.cloneSource 完成）。
+  function startCloneFromTopAd(topAdId: string, myProductId?: string) {
+    const ad = topAdMap[topAdId];
+    if (!ad) {
+      console.warn("[AdStudioApp] startCloneFromTopAd: unknown topAdId", topAdId);
+      return;
+    }
+    const cloneSource = toCloneSource(ad, myProductId);
+    const promptText = `复刻爆款广告 ${ad.title}（${ad.brand} · ${ad.region}）到产品「${selectedProduct}」`;
+    const session = createAgentSession("clone", selectedProduct, promptText);
+    setSetupMode("clone");
+    setAgentSession({
+      ...session,
+      competitor: ad.title,
+      focus: ["Hook", "脚本逻辑", "CTA"],
+      // 直接锁定到 confirm 步骤之后：用户进 workbench 就能看到画布上的 5 个节点
+      locked: true,
+      currentStepIndex: 0,
+      cloneSource
+    });
+    goRoute("workbench");
+    showToast(`已把「${ad.title}」带入 Agent 复刻画布`);
   }
 
   function updateGeneration(kind: GenerationKind, nextState: GenerationStateUpdater) {
@@ -172,7 +215,7 @@ export function AdStudioApp() {
         onRouteChange={goRoute}
         onStartAgent={startAgent}
         onStartGeneration={startGeneration}
-        onUseTemplate={applyTemplate}
+        onOpenTemplate={setSelectedTemplateId}
       />
       <AgentView
         active={route === "agent"}
@@ -211,8 +254,14 @@ export function AdStudioApp() {
         onRouteChange={goRoute}
         onToast={showToast}
       />
-      <TemplatesView active={route === "templates"} onUseTemplate={applyTemplate} />
+      <TemplatesView
+        active={route === "templates"}
+        onOpenTemplate={setSelectedTemplateId}
+        onReplicateAd={startWinningAdReplication}
+        onCloneInAgent={startCloneFromTopAd}
+      />
       <AssetsView active={route === "assets"} onStartAgent={startAgent} />
+      <TemplateDetailModal productName={selectedProduct} template={selectedTemplate} onClose={() => setSelectedTemplateId(null)} onUseTemplate={applyTemplate} />
     </AppShell>
   );
 }

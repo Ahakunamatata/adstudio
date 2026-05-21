@@ -398,6 +398,8 @@ Prompt：one-take UGC product demo...
 
 模板区的核心作用是让“不知道做什么”的用户快速找到方向。
 
+补充决策：模板区不再只表示一组预填 prompt 卡片，而是分成“AI 模板库”和“爆款广告库”两条路径。AI 模板库展示已经由平台跑通过的可生成模板，点击后进入模板详情弹窗并可继续预填 Ad Video / Ad Image。爆款广告库展示真实投放广告和效果数据，点击后进入 Agent 复刻流程，不直接暴露为可生成 prompt。详细 schema 见 `AD_STUDIO_TEMPLATE_SCHEMA.md`。
+
 ### 模板分类
 
 ```text

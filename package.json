@@ -10,8 +10,11 @@
   },
   "dependencies": {
     "@xyflow/react": "^12.10.2",
+    "drizzle-orm": "^0.45.2",
     "lucide-react": "latest",
     "next": "latest",
+    "playwright": "^1.60.0",
+    "postgres": "^3.4.9",
     "react": "latest",
     "react-dom": "latest",
     "zod": "latest"
@@ -20,8 +23,11 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9.39.1",
     "eslint-config-next": "latest",
+    "tsx": "^4.22.2",
     "typescript": "latest"
   },
   "pnpm": {

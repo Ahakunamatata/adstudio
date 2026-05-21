@@ -1,0 +1,32 @@
+[Unit]
+Description=Ad Studio embedding worker (consumes embed_queue, writes ad_embeddings)
+# 在 crawler 之后启动 —— crawler 不存在也能跑（只是没活儿），所以软依赖即可
+After=network-online.target adstudio-crawler.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/adstudio
+# 用 .env.local 注入 DATABASE_URL / JINA_API_KEY 等；EnvironmentFile= 不够灵活，
+# 让 tsx 自己解析 --env-file
+ExecStart=/root/adstudio/node_modules/.bin/tsx --env-file=.env.local scripts/worker/embed-runner.ts
+Restart=always
+# 失败 5s 后重启；连续 12 次（即 ~60s）都失败则真挂掉
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=12
+
+# 不让 systemd 误以为它挂掉（embed-runner 是无限循环）
+TimeoutStartSec=30
+TimeoutStopSec=20
+
+# 限制内存避免 worker 一爆把整台机器拖死
+MemoryMax=512M
+
+# 日志
+StandardOutput=append:/var/log/adstudio/embed-runner.out.log
+StandardError=append:/var/log/adstudio/embed-runner.err.log
+
+[Install]
+WantedBy=multi-user.target

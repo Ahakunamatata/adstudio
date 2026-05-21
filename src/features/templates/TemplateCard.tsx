@@ -4,12 +4,12 @@ import type { Template } from "@/lib/domain/schemas";
 
 type TemplateCardProps = {
   template: Template;
-  onUse: (templateId: string) => void;
+  onOpen: (templateId: string) => void;
 };
 
-export function TemplateCard({ template, onUse }: TemplateCardProps) {
+export function TemplateCard({ template, onOpen }: TemplateCardProps) {
   return (
-    <button className="template-card" type="button" onClick={() => onUse(template.id)}>
+    <button className="template-card" type="button" onClick={() => onOpen(template.id)}>
       <div className={`thumb ${template.thumbClass}`}>
         {template.label ? <div className="cutline">{template.label}</div> : null}
       </div>
@@ -18,6 +18,12 @@ export function TemplateCard({ template, onUse }: TemplateCardProps) {
         <span>{template.meta[1]}</span>
       </div>
       <h4>{template.title}</h4>
+      {template.schema || template.verificationStatus ? (
+        <div className="template-card-tags">
+          {template.schema ? <span>{template.schema}</span> : null}
+          {template.verificationStatus ? <span>{template.verificationStatus}</span> : null}
+        </div>
+      ) : null}
     </button>
   );
 }

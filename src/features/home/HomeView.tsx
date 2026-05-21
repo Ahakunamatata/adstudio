@@ -12,10 +12,10 @@ type HomeViewProps = {
   onRouteChange: (route: AppRoute) => void;
   onStartAgent: (mode: AgentMode, prompt: string) => void;
   onStartGeneration: (kind: GenerationKind, prompt: string) => void;
-  onUseTemplate: (templateId: string) => void;
+  onOpenTemplate: (templateId: string) => void;
 };
 
-export function HomeView({ active, onRouteChange, onStartAgent, onStartGeneration, onUseTemplate }: HomeViewProps) {
+export function HomeView({ active, onRouteChange, onStartAgent, onStartGeneration, onOpenTemplate }: HomeViewProps) {
   const [launcherMode, setLauncherMode] = useState<LauncherMode>("agent");
 
   return (
@@ -24,7 +24,7 @@ export function HomeView({ active, onRouteChange, onStartAgent, onStartGeneratio
         <Launcher onRouteChange={onRouteChange} onStartAgent={onStartAgent} onStartGeneration={onStartGeneration} onModeChange={setLauncherMode} />
         {launcherMode === "agent" ? <ProjectExamples /> : null}
       </section>
-      <TemplateShowcase onUseTemplate={onUseTemplate} />
+      <TemplateShowcase onOpenTemplate={onOpenTemplate} />
     </section>
   );
 }

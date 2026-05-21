@@ -37,6 +37,7 @@ import { CanvasNodeEditorPopover } from "@/features/canvas/CanvasNodeEditorPopov
 import { adCanvasNodeTypes } from "@/features/canvas/CanvasNodeRenderer";
 import { CANVAS_ACTION_EVENT } from "@/features/canvas/events";
 import type { AdCanvasFlowEdge, AdCanvasFlowNode, CanvasRuntimeAction, EdgeFlowVariant } from "@/features/canvas/types";
+import { buildCloneCanvas } from "./cloneCanvas";
 
 type WorkbenchCanvasProps = {
   session: AgentSession;
@@ -75,6 +76,188 @@ const initialState: CanvasState = {
   detailNodeId: null,
   detailRevision: 0
 };
+
+// ── Sprint 1 (2026-05-21): 真 LLM 生成 5-node clone canvas ──
+// 调 POST /api/workbench/generate-node，返回结构化 content。
+// 失败时返回 { ok: false, message } 由调用方写进节点 output。
+
+type CloneGenerateInput = {
+  sessionId: string;
+  nodeId: string;
+  businessType: string;
+  cloneSource: NonNullable<AgentSession["cloneSource"]>;
+  productName: string;
+};
+
+type CloneGenerateResult =
+  | { ok: true; content: string; artifactId: string }
+  | { ok: false; message: string };
+
+async function runCloneNodeGenerationRemote(
+  input: CloneGenerateInput
+): Promise<CloneGenerateResult> {
+  try {
+    const response = await fetch("/api/workbench/generate-node", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: input.sessionId,
+        nodeId: input.nodeId,
+        businessType: input.businessType,
+        cloneSource: {
+          topAdId: input.cloneSource.topAdId,
+          topAdTitle: input.cloneSource.topAdTitle,
+          topAdBrand: input.cloneSource.topAdBrand,
+          topAdRegion: input.cloneSource.topAdRegion,
+          topAdPlatform: input.cloneSource.topAdPlatform,
+          topAdDurationSec: input.cloneSource.topAdDurationSec,
+          topAdInsights: input.cloneSource.topAdInsights,
+          myProductName: input.productName
+        }
+      })
+    });
+    const data = (await response.json().catch(() => null)) as
+      | { ok: true; artifactId: string; content: unknown }
+      | { ok: false; error: string; message?: string }
+      | null;
+    if (!response.ok || !data) {
+      return {
+        ok: false,
+        message: data && "message" in data && data.message ? data.message : `HTTP ${response.status}`
+      };
+    }
+    if (!data.ok) {
+      return { ok: false, message: data.message || data.error || "unknown error" };
+    }
+    return {
+      ok: true,
+      artifactId: data.artifactId,
+      content: formatArtifactAsMarkdown(input.businessType, data.content)
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+// 把结构化 artifact 转成节点 output 字段（plain text + 轻度 markdown）。
+// 各 businessType 字段 shape 不同，专门写 5 个 formatter，保证可读性。
+function formatArtifactAsMarkdown(businessType: string, content: unknown): string {
+  if (!content || typeof content !== "object") return JSON.stringify(content);
+  const c = content as Record<string, unknown>;
+
+  if (businessType === "objective_breakdown") {
+    const hook = c.hookAnalysis as { durationSec?: number; technique?: string; whyEffective?: string } | undefined;
+    const signals = (c.visualSignals as string[] | undefined) ?? [];
+    const audience = c.audience as { targetSegment?: string; painPointTouched?: string } | undefined;
+    return [
+      `## 钩子分析（${hook?.durationSec ?? "?"}s）`,
+      `**手法**：${hook?.technique ?? ""}`,
+      `**为什么有效**：${hook?.whyEffective ?? ""}`,
+      ``,
+      `## 视觉印记`,
+      ...signals.map((s) => `- ${s}`),
+      ``,
+      `## 节奏`,
+      String(c.pacing ?? ""),
+      ``,
+      `## 受众`,
+      `**目标人群**：${audience?.targetSegment ?? ""}`,
+      `**戳中焦虑**：${audience?.painPointTouched ?? ""}`,
+      ``,
+      `## 为什么这条爆`,
+      String(c.whyItWorked ?? "")
+    ].join("\n");
+  }
+
+  if (businessType === "clone_strategy") {
+    const preserve = (c.preserveElements as string[] | undefined) ?? [];
+    const replace = (c.replaceElements as string[] | undefined) ?? [];
+    const risks = (c.risks as string[] | undefined) ?? [];
+    return [
+      `## 保留`,
+      ...preserve.map((s) => `- ${s}`),
+      ``,
+      `## 替换`,
+      ...replace.map((s) => `- ${s}`),
+      ``,
+      `## 适配后的 Hook`,
+      String(c.adaptedHook ?? ""),
+      ``,
+      `## 产品融入方式`,
+      String(c.productIntegration ?? ""),
+      ``,
+      `## 风险`,
+      ...risks.map((s) => `- ${s}`)
+    ].join("\n");
+  }
+
+  if (businessType === "ad_script") {
+    const scenes = (c.scenes as Array<Record<string, unknown>> | undefined) ?? [];
+    const lines: string[] = [`总时长 ${c.totalDurationSec ?? "?"}s · ${scenes.length} 个场景`, ``];
+    for (const s of scenes) {
+      lines.push(`### ${s.sceneId} (${s.startSec}-${s.endSec}s)`);
+      lines.push(`**画面**：${s.visual ?? ""}`);
+      if (s.narration) lines.push(`**旁白**：${s.narration}`);
+      if (s.onScreenText) lines.push(`**字幕**：${s.onScreenText}`);
+      if (s.productBeat) lines.push(`**产品**：${s.productBeat}`);
+      lines.push(``);
+    }
+    return lines.join("\n");
+  }
+
+  if (businessType === "storyboard_frame") {
+    const frames = (c.frames as Array<Record<string, unknown>> | undefined) ?? [];
+    const lines: string[] = [];
+    for (const f of frames) {
+      lines.push(`### ${f.sceneId}`);
+      lines.push(`**镜头**：${f.composition ?? ""} · ${f.cameraAngle ?? ""}`);
+      lines.push(`**主体**：${f.characterFocus ?? ""}`);
+      lines.push(`**背景**：${f.backgroundDetail ?? ""}`);
+      lines.push(`**色调**：${f.palette ?? ""}`);
+      if (f.textOverlay) lines.push(`**字幕**：${f.textOverlay}`);
+      lines.push(``);
+    }
+    return lines.join("\n");
+  }
+
+  if (businessType === "final_video") {
+    const params = c.paramsPlan as Record<string, unknown> | undefined;
+    const anchors = (c.anchorRequirements as Array<Record<string, unknown>> | undefined) ?? [];
+    return [
+      `## 视频生成 Prompt`,
+      String(c.prompt ?? ""),
+      ``,
+      `## Negative Prompt`,
+      String(c.negativePrompt ?? ""),
+      ``,
+      `## 参数`,
+      `- 比例：${params?.aspectRatio ?? ""}`,
+      `- 时长：${params?.durationSec ?? "?"}s`,
+      `- FPS：${params?.fps ?? "?"}`,
+      `- 动态强度：${params?.motionIntensity ?? ""}`,
+      ``,
+      `## 必备锚点资产`,
+      ...anchors.map((a) => `- [${a.role}] ${a.description}${a.critical ? "（必需）" : ""}`)
+    ].join("\n");
+  }
+
+  return JSON.stringify(content, null, 2);
+}
+
+// 当 session 是从「在 Agent 中复刻」入口进来时，画布以 5 个复刻节点开局；
+// 否则保留原 Family Locator demo canvas 以兼容现有 setup-view 流。
+function buildInitialState(session: AgentSession): CanvasState {
+  if (!session.cloneSource) return initialState;
+  const { nodes, edges } = buildCloneCanvas(session.cloneSource, session.product);
+  return {
+    ...initialState,
+    nodes,
+    edges
+  };
+}
 
 type CreationMenuState = {
   x: number;
@@ -434,7 +617,9 @@ function CanvasCreateMenu({
 }
 
 export function WorkbenchCanvas({ session }: WorkbenchCanvasProps) {
-  const [canvasState, dispatchCanvas] = useReducer(canvasReducer, initialState);
+  // 用 lazy init 把 session.cloneSource 注入初始 nodes/edges。useReducer 只在
+  // mount 时跑一次，外层 AgentWorkbenchView 通过 key 切换不同 clone 会话。
+  const [canvasState, dispatchCanvas] = useReducer(canvasReducer, session, buildInitialState);
   const [miniMapOpen, setMiniMapOpen] = useState(false);
   const [createMenu, setCreateMenu] = useState<CreationMenuState | null>(null);
   const [canvasPanning, setCanvasPanning] = useState(false);
@@ -488,12 +673,59 @@ export function WorkbenchCanvas({ session }: WorkbenchCanvasProps) {
       const node = findCanvasNode(canvasState.nodes, nodeId);
       if (!node || node.locked || node.status === "locked" || node.status === "running") return;
 
+      // 判断是不是 clone-canvas 的 5 个业务节点。是 → 走真 LLM；否 → 走原 mock
+      const cloneBusinessTypes = new Set([
+        "objective_breakdown",
+        "clone_strategy",
+        "ad_script",
+        "storyboard_frame",
+        "final_video"
+      ]);
+      const isCloneNode = cloneBusinessTypes.has(node.businessType);
+
+      if (!isCloneNode || !session.cloneSource) {
+        // 兜底：保留原 mock 路径（其他业务节点 / 没有 cloneSource 的情况）
+        dispatchCanvas({ type: "runNodeGeneration", nodeId });
+        window.setTimeout(() => {
+          dispatchCanvas({ type: "appendNodeVersion", nodeId });
+        }, 900);
+        return;
+      }
+
+      // 真 LLM 路径
       dispatchCanvas({ type: "runNodeGeneration", nodeId });
-      window.setTimeout(() => {
-        dispatchCanvas({ type: "appendNodeVersion", nodeId });
-      }, 900);
+      void runCloneNodeGenerationRemote({
+        sessionId: session.cloneSource.topAdId, // 当前用 topAdId 当 session key
+        nodeId,
+        businessType: node.businessType,
+        cloneSource: session.cloneSource,
+        productName: session.product
+      })
+        .then((result) => {
+          if (result.ok) {
+            dispatchCanvas({
+              type: "appendNodeVersion",
+              nodeId,
+              content: result.content
+            });
+          } else {
+            // 失败时把错误信息写进节点 output，方便用户看到
+            dispatchCanvas({
+              type: "appendNodeVersion",
+              nodeId,
+              content: `⚠️ 生成失败：${result.message}`
+            });
+          }
+        })
+        .catch((error: unknown) => {
+          dispatchCanvas({
+            type: "appendNodeVersion",
+            nodeId,
+            content: `⚠️ 生成异常：${error instanceof Error ? error.message : String(error)}`
+          });
+        });
     },
-    [canvasState.nodes]
+    [canvasState.nodes, session.cloneSource, session.product]
   );
 
   const flowNodeHandlers = useMemo(

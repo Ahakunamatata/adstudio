@@ -1,0 +1,14 @@
+[Unit]
+Description=Trigger crawl_matrix expansion every 10 minutes
+
+[Timer]
+# OnBootSec：开机 2 分钟后第一次跑（让 PG / 网络稳定下来）
+OnBootSec=2min
+# OnUnitActiveSec：上一次跑完后 10 分钟再跑
+OnUnitActiveSec=10min
+# 持久化：服务器挂掉重启时，错过的 trigger 会被补跑一次
+Persistent=true
+Unit=adstudio-expand-pool.service
+
+[Install]
+WantedBy=timers.target

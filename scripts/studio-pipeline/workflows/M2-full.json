@@ -1,0 +1,84 @@
+{
+  "batch_id": "M2-full-2026-05-21",
+  "description": "M2 电商商品演示 · Premium 黑底光束 TVC · 全 3 变体",
+  "template_id": "M2-ecom-tvc",
+  "tasks": [
+    {
+      "id": "M2-v2a",
+      "step": "keyframe",
+      "stage": "t2i",
+      "model": "gpt-image-2-manual",
+      "notes": "v2a 母版 · 黑底光束静帧 keyframe",
+      "slots": {
+        "brand": "AURELIA",
+        "subline": "PURE SERUM"
+      },
+      "prompt": "A 35mm film photograph of a 30ml premium glass serum bottle standing upright at center frame in a dark, moody cinematic space. The bottle has a black matte dropper cap and a clean white label that reads \"{{brand}}\" in large serif capitals on the top line and \"{{subline}}\" in smaller spaced sans-serif caps below. Liquid inside is a soft amber tone, visible through the glass. A warm golden volumetric light beam cuts diagonally from upper-left to lower-right across the bottle, fine golden dust particles drifting slowly through the beam. Edges of the glass catch the light, creating subtle specular highlights on the shoulder and base of the bottle. Soft golden bokeh particles float in the deep black background. Composed editorial framing, shallow depth of field, label sharp and centered. No human hands, no other logos, no text overlay added. Premium beauty commercial feel, warm tungsten palette, deep blacks, 4:5 aspect ratio."
+    },
+    {
+      "id": "M2-v2a",
+      "step": "motion",
+      "stage": "i2v",
+      "model": "seedance-2.0",
+      "depends_on": ["M2-v2a:keyframe"],
+      "params": {
+        "aspect": "9:16",
+        "duration_seconds": 10,
+        "resolution": "720p",
+        "n_candidates": 4
+      },
+      "slots": {
+        "brand": "AURELIA"
+      },
+      "prompt": "A premium glass serum bottle stays centered in a dark moody cinematic space throughout. A warm golden volumetric light beam cuts diagonally across the frame from upper-left to lower-right, with fine golden dust particles drifting slowly downward through the beam. The camera opens on a medium-wide composed framing and pushes in on a slow motorized dolly toward the bottle over the full duration, ending at a medium close-up. As the camera moves, light catches the edges of the glass and the shoulder of the bottle, creating subtle moving specular highlights across the surface. The \"{{brand}}\" label stays sharp, centered, and clearly readable in every frame. Soft golden bokeh particles drift slowly in the deep black background. No human hands enter the frame, no text overlay is added, no other logos appear. Cinematic premium beauty commercial feel, warm tungsten palette, deep blacks, 35mm film grain. End frame: bottle centered at medium close-up, light beam glowing strongly across the label, bokeh particles floating."
+    },
+    {
+      "id": "M2-v2b",
+      "step": "keyframe",
+      "stage": "t2i",
+      "model": "gpt-image-2-manual",
+      "notes": "v2b 场景化版 · 大理石台面 + 桉树叶 keyframe",
+      "slots": {
+        "brand": "AURELIA",
+        "subline": "PURE SERUM",
+        "nature_element": "a single fresh eucalyptus sprig with three rounded silver-green leaves"
+      },
+      "prompt": "A 35mm film photograph of a 30ml premium glass serum bottle standing upright at center frame on a polished light marble surface with subtle grey veining. The bottle has a black matte dropper cap and a clean white label reading \"{{brand}}\" in large serif capitals on the top line and \"{{subline}}\" in smaller spaced sans-serif caps below. {{nature_element}} lies 8cm to the right of the bottle, slightly out of focus. The background is a softly graded warm dark beige fading to deep brown at the edges. A diffused golden side light enters from the upper-left, casting a soft elongated shadow of the bottle to the right across the marble. Warm tungsten ambience, shallow depth of field, label sharp and centered. No human hands, no other logos, no text overlay. Editorial product photography, premium clean spa aesthetic, 4:5 aspect ratio."
+    },
+    {
+      "id": "M2-v2b",
+      "step": "motion",
+      "stage": "i2v",
+      "model": "seedance-2.0",
+      "depends_on": ["M2-v2b:keyframe"],
+      "params": {
+        "aspect": "9:16",
+        "duration_seconds": 10,
+        "resolution": "720p",
+        "n_candidates": 4
+      },
+      "slots": {
+        "brand": "AURELIA"
+      },
+      "prompt": "A premium glass serum bottle stands centered on a polished light marble countertop throughout. The eucalyptus sprig to the right stays in its position, slightly out of focus. The camera opens on the composition shown and slowly tracks in a shallow left-to-right arc around the bottle while pushing gently forward, revealing the marble veining shifting subtly underneath. A warm diffused golden side light remains constant from the upper-left, the shadow of the bottle stretching softly across the marble. The \"{{brand}}\" label stays sharp, centered, and clearly readable throughout the move. A single eucalyptus leaf trembles almost imperceptibly as if caught in a quiet draft. No human hands enter the frame, no text overlay is added, no other logos appear. Editorial beauty commercial feel, warm tungsten palette, soft contrast, 35mm film grain, shallow depth of field. End frame: bottle at medium close-up slightly off-center-left, eucalyptus more clearly defocused in the right foreground."
+    },
+    {
+      "id": "M2-v2c",
+      "step": "motion",
+      "stage": "i2v",
+      "model": "seedance-2.0",
+      "depends_on": ["M2-v2a:keyframe"],
+      "notes": "v2c 复用 v2a 的 keyframe，跑 180° 旋转",
+      "params": {
+        "aspect": "9:16",
+        "duration_seconds": 10,
+        "resolution": "720p",
+        "n_candidates": 4
+      },
+      "slots": {
+        "brand": "AURELIA"
+      },
+      "prompt": "A premium glass serum bottle stands upright at center frame on a polished surface throughout. The camera begins facing the front of the bottle and orbits 180° in a smooth slow constant arc from left to right around the bottle over the full duration, ending facing the back. As the orbit progresses, the warm golden volumetric light beam appears to rotate around the bottle, catching different facets of the glass at each angle, creating moving specular highlights and shifting bokeh patterns in the deep dark background behind it. The \"{{brand}}\" label stays sharp and readable from the front through three-quarter angles, naturally rotating out of view as the camera passes the side. Fine golden dust particles drift continuously through the beam. The bottle itself does not rotate — only the camera moves. No human hands, no text overlay, no other logos. Premium beauty TVC feel, warm tungsten palette, deep blacks, 35mm film grain. End frame: camera facing the back of the bottle, light beam glowing behind it creating rim light on the silhouette."
+    }
+  ]
+}

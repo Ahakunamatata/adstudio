@@ -1,0 +1,26 @@
+[Unit]
+Description=Ad Studio detail enrichment worker (TikTok detail → transcript/landing/metrics)
+After=network-online.target adstudio-crawler.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/adstudio
+ExecStart=/root/adstudio/node_modules/.bin/tsx --env-file=.env.local scripts/worker/enrich-runner.ts
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=12
+
+TimeoutStartSec=30
+TimeoutStopSec=20
+
+# enrich 用 Playwright，内存比 embed 高
+MemoryMax=1024M
+
+StandardOutput=append:/var/log/adstudio/enrich-runner.out.log
+StandardError=append:/var/log/adstudio/enrich-runner.err.log
+
+[Install]
+WantedBy=multi-user.target
