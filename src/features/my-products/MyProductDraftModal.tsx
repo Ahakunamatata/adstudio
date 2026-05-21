@@ -100,13 +100,37 @@ export function MyProductDraftModal({ initialUrl, onClose, onSubmit }: MyProduct
       }
       const data = (await response.json()) as {
         productName?: string;
-        productType?: MyProductType | "Other";
+        productType?: string;
+        industry?: string;
         cleanedIntro?: string;
         cleanedPainPoints?: string;
         mainImageUrl?: string | null;
         canonicalUrl?: string | null;
         pageBlockedByAntibot?: boolean;
       };
+      // ── productType normalize（case-insensitive + industry fallback）──
+      // LLM 偶尔返回 lowercase / trailing space / 别名 → 用 case-insensitive
+      // 匹配。如果还是没命中，看 industry 字段反推（ecommerce industry → Ecommerce type）。
+      const resolveType = (
+        raw: string | undefined,
+        industry: string | undefined
+      ): MyProductType => {
+        const norm = (raw ?? "").trim().toLowerCase();
+        for (const opt of PRODUCT_TYPE_OPTIONS) {
+          if (opt.toLowerCase() === norm) return opt;
+        }
+        // industry → type 反推（兜底）
+        const ind = (industry ?? "").trim().toLowerCase();
+        if (ind === "ecommerce" || ind === "food-beverage" || ind === "real-estate-auto")
+          return "Ecommerce";
+        if (ind === "app") return "App";
+        if (ind === "game") return "Game";
+        if (ind === "saas") return "SaaS";
+        return "Other";
+      };
+      const resolvedType = resolveType(data.productType, data.industry);
+      console.log("[parseFromUrl] raw productType:", data.productType, "→ resolved:", resolvedType);
+
       // 自动填充：文本字段尊重用户已填（不覆盖），但 productType / images
       // 让 AI 覆盖（用户没法准确判断 App vs Ecommerce，AI 看 URL 更准）。
       // URL 用 canonicalUrl 回填（剥掉 utm/dib/ref 等 tracking，纯产品 URL）。
@@ -114,10 +138,7 @@ export function MyProductDraftModal({ initialUrl, onClose, onSubmit }: MyProduct
         ...prev,
         url: data.canonicalUrl || prev.url,
         name: prev.name.trim() || data.productName || prev.name,
-        type:
-          (PRODUCT_TYPE_OPTIONS as readonly string[]).includes(data.productType ?? "")
-            ? (data.productType as MyProductType)
-            : prev.type,
+        type: resolvedType,
         intro: prev.intro.trim() || data.cleanedIntro || prev.intro,
         painPoints: prev.painPoints.trim() || data.cleanedPainPoints || prev.painPoints,
         // 图片：用 AI 拿到的 mainImageUrl 替换默认空数组（用户后续可手动改）
