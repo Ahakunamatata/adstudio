@@ -437,14 +437,26 @@ function ScrapedAdsPanel({
     );
   }
 
-  // feedback 计数：用 adData.userFeedback；mock TopAd 不计入
+  // feedback 计数 + 各 source 数量分布（让用户一眼看到三平台覆盖广不广）
   let likedCount = 0;
   let dislikedCount = 0;
+  const sourceCount = { meta: 0, tiktok: 0, google: 0, other: 0 };
   for (const s of product.scrapedAds) {
     const fb = s.adData?.userFeedback;
     if (fb === "positive") likedCount += 1;
     else if (fb === "negative") dislikedCount += 1;
+    const src = s.adData?.source;
+    if (src === "meta") sourceCount.meta += 1;
+    else if (src === "tiktok") sourceCount.tiktok += 1;
+    else if (src === "google") sourceCount.google += 1;
+    else sourceCount.other += 1;
   }
+  // 用 source 分布拼一个简洁文案，藏在 head 右侧
+  const sourceParts: string[] = [];
+  if (sourceCount.meta) sourceParts.push(`Meta ${sourceCount.meta}`);
+  if (sourceCount.tiktok) sourceParts.push(`TikTok ${sourceCount.tiktok}`);
+  if (sourceCount.google) sourceParts.push(`Google ${sourceCount.google}`);
+  const sourceBreakdown = sourceParts.join(" · ");
   // 用 filter 过滤展示列表（保留对象引用，map 时不重新 alloc）
   const visibleAds = product.scrapedAds.filter((s) => {
     const fb = s.adData?.userFeedback ?? null;
@@ -459,7 +471,9 @@ function ScrapedAdsPanel({
     <div className="myp-detail-section">
       <div className="myp-section-head">
         <h4>个性化爆款 · 仅与你产品相关</h4>
-        <span className="myp-muted">点开查看完整数据 + Agent 复刻</span>
+        <span className="myp-muted">
+          {sourceBreakdown || "点开查看完整数据 + Agent 复刻"}
+        </span>
       </div>
       {/* feedback 过滤 tab 行：默认隐藏 ✗，可切到只看 ✓ 或全部 */}
       <div className="myp-fb-filter-row">
