@@ -344,6 +344,64 @@ function toVectorLiteral(values: number[]): string {
   return `[${values.join(",")}]`;
 }
 
+// Personalization：拉这个产品下用户的 feedback，用来在检索时过滤 ✗ 的、boost ✓ 的
+// 没 product 上下文（persistForProductId 为空）就不走这一路 —— 试用模式或 ad-hoc 检索。
+async function loadFeedbackContext(productId: string | undefined): Promise<{
+  negativeAdIds: string[];
+  positiveAdIds: string[];
+  negativeAdvertisers: string[]; // lowercase 已 normalize
+  positiveAdvertisers: string[];
+}> {
+  const empty = {
+    negativeAdIds: [] as string[],
+    positiveAdIds: [] as string[],
+    negativeAdvertisers: [] as string[],
+    positiveAdvertisers: [] as string[]
+  };
+  if (!productId) return empty;
+  try {
+    const rows = await db.execute<{
+      ad_id: string;
+      user_feedback: "positive" | "negative";
+      advertiser_name: string | null;
+    }>(sql`
+      SELECT pam.ad_id, pam.user_feedback, ads.advertiser_name
+      FROM product_ad_matches pam
+      JOIN ads ON ads.id = pam.ad_id
+      WHERE pam.product_id = ${productId}
+        AND pam.user_feedback IS NOT NULL
+    `);
+    const negativeAdIds: string[] = [];
+    const positiveAdIds: string[] = [];
+    const negAdv = new Set<string>();
+    const posAdv = new Set<string>();
+    for (const r of rows) {
+      const adv = (r.advertiser_name ?? "").trim().toLowerCase();
+      if (r.user_feedback === "negative") {
+        negativeAdIds.push(r.ad_id);
+        if (adv) negAdv.add(adv);
+      } else if (r.user_feedback === "positive") {
+        positiveAdIds.push(r.ad_id);
+        if (adv) posAdv.add(adv);
+      }
+    }
+    // 若同一 advertiser 既被 ✓ 又被 ✗，✓ 优先（不过滤）—— 用户更近的正反馈胜出
+    for (const a of posAdv) negAdv.delete(a);
+    return {
+      negativeAdIds,
+      positiveAdIds,
+      negativeAdvertisers: Array.from(negAdv),
+      positiveAdvertisers: Array.from(posAdv)
+    };
+  } catch (e) {
+    console.warn(
+      "[match-ads/feedback] load failed (continuing without personalization):",
+      e instanceof Error ? e.message : String(e)
+    );
+    return empty;
+  }
+}
+
 export async function POST(request: Request) {
   let body: unknown;
   try {
@@ -370,17 +428,13 @@ export async function POST(request: Request) {
     persistForProductId
   } = parsed.data;
 
-  // 把 match 结果持久化到 product_ad_matches（异步 fire-and-forget，不阻塞返回）
+  // 把 match 结果持久化到 product_ad_matches。
+  // ⚠️ 关键：不能再 DELETE * 然后 INSERT —— 那会清掉 user_feedback。
+  // 改成：UPSERT 新结果 → DELETE 没在本次结果里的 row（但保留已标 ✓/✗ 的不删）。
+  // 这样用户的反馈永远跟着 (product_id, ad_id) 走，下一次 rerank 仍然能识别。
   async function persistMatches(ads: ReturnType<typeof shapeAd>[]) {
     if (!persistForProductId || ads.length === 0) return;
     try {
-      // 先把这个 product 的老 matches 清掉（确保只保留最新的 top N）
-      await db.execute(sql`
-        DELETE FROM product_ad_matches WHERE product_id = ${persistForProductId}
-      `);
-      // 批量 INSERT。matched_keywords 用 LLM 用的 keywords 子集做 placeholder。
-      // drizzle 的 sql template 把 JS string[] 当 spread 处理（变成 $4,$5,$6
-      // tuple），不是 text[]。要手动拼 PG array literal: '{"kw1","kw2"}'。
       const matchedKeywordsArr = keywords.slice(0, 3);
       const matchedKeywordsLiteral =
         "{" +
@@ -388,7 +442,11 @@ export async function POST(request: Request) {
           .map((k) => `"${k.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`)
           .join(",") +
         "}";
+      // 1. UPSERT 本轮所有 ad 到 matches —— 已存在的（含 user_feedback）只更新
+      //    relevance / reason / surfaced_at，不动 user_feedback
+      const newAdIds: string[] = [];
       for (const ad of ads) {
+        newAdIds.push(ad.id);
         try {
           await db.execute(sql`
             INSERT INTO product_ad_matches (
@@ -405,6 +463,7 @@ export async function POST(request: Request) {
               relevance_score = EXCLUDED.relevance_score,
               recommend_reason = EXCLUDED.recommend_reason,
               surfaced_at = EXCLUDED.surfaced_at
+              -- 故意不更新 user_feedback / matched_keywords，保留用户互动数据
           `);
         } catch (e) {
           console.warn(
@@ -412,6 +471,21 @@ export async function POST(request: Request) {
             e instanceof Error ? e.message : String(e)
           );
         }
+      }
+      // 2. 删除"上次有这次没"的过期 matches —— 但保留所有用户已标记的（user_feedback IS NOT NULL）
+      //    这样用户标过的 ad 即使本轮没召回到也不丢
+      try {
+        await db.execute(sql`
+          DELETE FROM product_ad_matches
+          WHERE product_id = ${persistForProductId}
+            AND user_feedback IS NULL
+            AND ad_id <> ALL(${newAdIds}::uuid[])
+        `);
+      } catch (e) {
+        console.warn(
+          "[match-ads/persist] prune stale matches failed:",
+          e instanceof Error ? e.message : String(e)
+        );
       }
       // 顺手更新 my_products.last_match_run_at 让前端能判断"上次 match 是啥时候"
       await db.execute(sql`
@@ -429,6 +503,21 @@ export async function POST(request: Request) {
     keywords.map((k) => k.trim()).filter((k) => k.length >= 2),
     industry
   );
+
+  // 加载用户对该产品过往的 ✓/✗ 反馈 —— 用来过滤 / 加权
+  const feedback = await loadFeedbackContext(persistForProductId);
+  const hasNegativeFilter =
+    feedback.negativeAdIds.length > 0 || feedback.negativeAdvertisers.length > 0;
+  // SQL fragments：✗ 的 ad_id 直接排除；✗ 的 advertiser 名（lowercase 比较）连带排除。
+  // 这两个加在 vector SQL 和 ILIKE fallback 的 WHERE 里。
+  const negativeAdIdFilter =
+    feedback.negativeAdIds.length > 0
+      ? sql`AND ads.id <> ALL(${feedback.negativeAdIds}::uuid[])`
+      : sql``;
+  const negativeAdvertiserFilter =
+    feedback.negativeAdvertisers.length > 0
+      ? sql`AND (ads.advertiser_name IS NULL OR lower(ads.advertiser_name) <> ALL(${feedback.negativeAdvertisers}::text[]))`
+      : sql``;
 
   // ── Path 1: 语义检索 ────────────────────────────────────────
   if (queryText.length > 0) {
@@ -466,6 +555,8 @@ export async function POST(request: Request) {
             JOIN ad_embeddings ON ad_embeddings.ad_id = ads.id
             WHERE ads.status <> 'down'
             ${sourceFilter}
+            ${negativeAdIdFilter}
+            ${negativeAdvertiserFilter}
             ORDER BY ad_embeddings.embedding <=> ${vectorLiteral}::vector
             LIMIT ${rerank ? RERANK_CANDIDATE_LIMIT : limit}
           `);
@@ -493,7 +584,14 @@ export async function POST(request: Request) {
                 provider: embedResult.provider,
                 model: embedResult.model,
                 rerankUsed: usedRerank,
-                persisted: !!persistForProductId
+                persisted: !!persistForProductId,
+                // 个性化过滤统计（透明度，方便前端展示"基于你的 ✗ 已排除 N 条"）
+                personalized: hasNegativeFilter
+                  ? {
+                      excludedAdIds: feedback.negativeAdIds.length,
+                      excludedAdvertisers: feedback.negativeAdvertisers.length
+                    }
+                  : undefined
               });
             }
             const sliced = shaped.slice(0, limit);
@@ -544,6 +642,15 @@ export async function POST(request: Request) {
       if (keywordOr) conditions.push(keywordOr);
     }
     conditions.push(sql`${schema.ads.status} <> 'down'`);
+    // 同样应用 feedback 过滤（✗ 的 ad / advertiser 排除）
+    if (feedback.negativeAdIds.length > 0) {
+      conditions.push(sql`${schema.ads.id} <> ALL(${feedback.negativeAdIds}::uuid[])`);
+    }
+    if (feedback.negativeAdvertisers.length > 0) {
+      conditions.push(
+        sql`(${schema.ads.advertiserName} IS NULL OR lower(${schema.ads.advertiserName}) <> ALL(${feedback.negativeAdvertisers}::text[]))`
+      );
+    }
 
     const rows = await db
       .select({
