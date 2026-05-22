@@ -38,11 +38,20 @@ type DueRule = {
 };
 
 async function loadDueRules(): Promise<DueRule[]> {
+  // 用 ROW_NUMBER OVER (PARTITION BY source) 做 source round-robin：
+  // 第一波取每个 source next_run_at 最早的一行，第二波取第二早……
+  // 这样 LIMIT N 里能保证每个 source 都拿到大致 N/3 个名额，
+  // 避免某个 source 把 next_run_at 排满 → LIMIT 全被它吃掉的饿死问题。
   const rows = await db.execute<DueRule>(sql`
     SELECT id, product_id, source, keyword, region, cadence_hours
-    FROM crawl_matrix
-    WHERE enabled = 1 AND next_run_at <= now()
-    ORDER BY priority DESC, next_run_at ASC
+    FROM (
+      SELECT id, product_id, source, keyword, region, cadence_hours,
+        next_run_at, priority,
+        ROW_NUMBER() OVER (PARTITION BY source ORDER BY priority DESC, next_run_at ASC) AS source_rn
+      FROM crawl_matrix
+      WHERE enabled = 1 AND next_run_at <= now()
+    ) ranked
+    ORDER BY source_rn ASC, priority DESC, next_run_at ASC
     LIMIT ${MAX_NEW_JOBS_PER_RUN}
   `);
   return rows;
