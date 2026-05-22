@@ -408,48 +408,78 @@ export async function fetchTiktokAds(
       }
     }
 
-    // ── 如果上面 URL 路径没拿到 search XHR：回退到 input + Enter ──
-    // TikTok 的搜索框不是原生 <input>，是带 data-testid="cc_commonCom_autoComplete"
-    // 的自定义 div + 内嵌 contenteditable / shadow input。所以我们点 wrapper 让它
-    // focus，再用 page.keyboard.type 让事件正确进 React 状态。
+    // ── 如果上面 URL 路径没拿到 search XHR：回退到 input + 点搜索按钮 ──
+    // 2026-05-22 dump 验证：实际 DOM 结构
+    //   input.byted-input.byted-input-size-md[placeholder="Search by brand or product keywords"]
+    //   [data-testid="cc_commonCom_autoComplete_seach"]  <- 搜索按钮（注意拼写：seach 不是 search）
+    // 之前只点 wrapper + Enter，没点搜索按钮 → keyword 输了但 search 没提交。
     if (wantSearch && keywordForSearch.length > 0 && !searchBody && !internal.signal.aborted) {
-      // 优先级：banner 主搜索框 > 列表内嵌过滤搜索框 > 任意带 search 的 div > 原生 input
-      const searchWrapperSelectors = [
-        "[data-testid='cc_commonCom_autoComplete']",
-        "[class*='TopadsSearchBanner_searchContent']",
-        "[class*='TopadsSearchBanner_searchContainer']",
-        "[class*='TopadsListFilter_searchInput']",
-        "[class*='CcAutoCompleteInput_container']",
-        "input[placeholder*='Search']",
-        "input[placeholder*='search']",
-        "input[type='search']"
+      // 直接命中原生 input。byted-input 是 TikTok 的 design system input。
+      const inputSelectors = [
+        "input.byted-input[placeholder*='brand or product']",
+        "input.byted-input.byted-input-size-md",
+        "[data-testid='cc_commonCom_autoComplete'] input",
+        "input[placeholder*='Search by brand']",
+        "input[placeholder*='Search']"
       ];
       let typed = false;
-      for (const sel of searchWrapperSelectors) {
+      let inputEl: import("playwright").ElementHandle | null = null;
+      for (const sel of inputSelectors) {
         try {
           const el = await session.page.$(sel);
           if (!el) continue;
-          // scroll into view 防止 banner 已被滚出可视区
+          // 用 fill 优先（原生 input），失败再点击 + keyboard.type
           await el.scrollIntoViewIfNeeded().catch(() => undefined);
-          await el.click({ delay: 80 });
-          // 清掉旧值（如果是 reuse session，理论上每次都是新 session 不需要清）
-          await session.page.keyboard.press("Meta+A").catch(() => undefined);
-          await session.page.keyboard.press("Control+A").catch(() => undefined);
-          await session.page.keyboard.press("Delete").catch(() => undefined);
-          // page.keyboard.type 触发真键盘事件序列（keydown/input/keyup），
-          // React/Vue 自定义 input 都吃；el.fill() 只对原生 input 工作。
-          await session.page.keyboard.type(keywordForSearch, { delay: 25 });
-          await session.page.waitForTimeout(300); // 等 autocomplete debounce
-          await session.page.keyboard.press("Enter");
-          typed = true;
-          break;
+          try {
+            await el.fill(keywordForSearch);
+            typed = true;
+            inputEl = el;
+            break;
+          } catch {
+            // fill 失败时降级到点击 + 键盘输入
+            await el.click({ delay: 80 });
+            await session.page.keyboard.press("Meta+A").catch(() => undefined);
+            await session.page.keyboard.press("Control+A").catch(() => undefined);
+            await session.page.keyboard.press("Delete").catch(() => undefined);
+            await session.page.keyboard.type(keywordForSearch, { delay: 25 });
+            typed = true;
+            inputEl = el;
+            break;
+          }
         } catch {
           // 试下一个 selector
         }
       }
 
       if (typed) {
-        // 等真正带 keyword= 的 XHR 回来；韩国住宅代理 → 美国 TikTok 端可能慢，给 30s
+        // 等 autocomplete debounce
+        await session.page.waitForTimeout(400);
+        // 关键修复：明确点 "cc_commonCom_autoComplete_seach" 搜索按钮（注意是 seach 拼错）
+        // 不依赖 Enter 提交 —— TikTok 的搜索按钮独立 click 才能触发 search XHR。
+        const searchButtonSelectors = [
+          "[data-testid='cc_commonCom_autoComplete_seach']",
+          "[data-testid='cc_commonCom_autoComplete_search']", // 万一改回正确拼写
+          "[class*='AutoComplete'] [class*='search']:not(input)",
+          "[class*='SearchButton']",
+          "button[class*='search']"
+        ];
+        let clicked = false;
+        for (const sel of searchButtonSelectors) {
+          try {
+            const btn = await session.page.$(sel);
+            if (!btn) continue;
+            await btn.click({ delay: 50 });
+            clicked = true;
+            break;
+          } catch {
+            // 试下一个
+          }
+        }
+        if (!clicked) {
+          // 兜底：按 Enter
+          await session.page.keyboard.press("Enter").catch(() => undefined);
+        }
+        // 等真正带 keyword= 的 XHR 回来；URL 不会变（SPA），靠 XHR URL 拦
         try {
           await session.page.waitForResponse(
             (r) =>
@@ -462,6 +492,8 @@ export async function fetchTiktokAds(
           await session.page.waitForTimeout(3_000).catch(() => undefined);
         }
       }
+      // 释放 element handle
+      if (inputEl) await inputEl.dispose().catch(() => undefined);
     }
 
     // 再抓一次页面内容用于 captcha 检测
