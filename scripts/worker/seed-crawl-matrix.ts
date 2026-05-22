@@ -65,8 +65,14 @@ const SEED_KEYWORDS = [
 // US/GB/DE 已有，新加 JP（日本好货）/ IN（东南亚低价）/ BR（南美增长大盘）
 const SEED_REGIONS = ["US", "GB", "DE", "JP", "IN", "BR"];
 // Meta 不走 Graph API（App 没 Identity Verification），改走 Web 抓 Ad Library
-// 公开页面（metaAdLibraryFetcher.ts）。Google 留 Sprint C。
-const SEED_SOURCES: Array<"tiktok" | "meta" | "google"> = ["tiktok", "meta", "google"];
+// 公开页面（metaAdLibraryFetcher.ts）。
+//
+// 2026-05-22 Google 暂时移除：dump 验证 adstransparency.google.com 没有原生
+// keyword search（?q= 参数 SPA 不读 → 始终首页），XHR 只返回 ad ID list 没有
+// advertiser_name / creative_body。要做 keyword search 得自建（按 ID 调 detail
+// RPC × 3758 个，太贵），优先级排到 Meta / TikTok 后面。crawl_matrix.enabled=0
+// 把已有 google 规则停掉。
+const SEED_SOURCES: Array<"tiktok" | "meta" | "google"> = ["tiktok", "meta"];
 
 // Meta 对部分关键词标"敏感"（武器 / 防盗 / 监控）→ captcha 高发，
 // 这些只让 TikTok 跑，不投 Meta（避免浪费 worker 周期）。
@@ -119,7 +125,8 @@ async function main() {
   console.log(
     `crawl_matrix seed done: inserted=${inserted}, skipped(dup)=${skipped}, skipped(sensitive on meta)=${skippedSensitive}`
   );
-  // 总规模：30 keyword × 6 region × 2 source - 18 (meta 敏感) = 342 规则
+  // 总规模（移除 google 之后）：30 keyword × 6 region × 2 source - 18 (meta 敏感) = 342 规则
+  // 历史 google 行（192 条）通过 enabled=0 单独停掉，不在这里重建
   process.exit(0);
 }
 
