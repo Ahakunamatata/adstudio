@@ -103,7 +103,12 @@ export async function launchBrowserSession(
   opts: LaunchSessionOptions = {}
 ): Promise<BrowserSession> {
   const headless = opts.headless ?? true;
-  const proxyUrl = opts.proxyUrl ?? process.env.TIKTOK_PROXY_URL ?? null;
+  // 显式传 null/'' = 禁用代理（连 env 都不读）；undefined = fallback 到 env。
+  // ?? 链当 null 时还会 fallback，所以这里要区分"显式禁用"和"没传"。
+  const proxyUrl =
+    opts.proxyUrl === undefined
+      ? process.env.TIKTOK_PROXY_URL ?? null
+      : opts.proxyUrl || null;
   const userAgent = opts.userAgent ?? DEFAULT_UA;
   const viewport = opts.viewport ?? { width: 1440, height: 900 };
   const locale = opts.locale ?? "en-US";

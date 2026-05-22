@@ -187,9 +187,15 @@ export async function fetchGoogleAdsTransparency(
   let pageContent = "";
 
   try {
+    // 2026-05-22 实测：走 JP residential 代理时 chromium 被 Google RST
+    // （curl 同代理 200 OK，所以是 TLS/JA3 指纹 + 代理组合被识别）。
+    // Aliyun ECS 直连 adstransparency.google.com 是 200 OK 0.5s，绕开代理就行。
+    // GOOGLE_USE_PROXY=1 时仍走 env TIKTOK_PROXY_URL（留个开关方便对比）
+    const useProxy = process.env.GOOGLE_USE_PROXY === "1";
     session = await launchBrowserSession({
       headless: true,
-      navTimeoutMs: timeoutMs
+      navTimeoutMs: timeoutMs,
+      proxyUrl: useProxy ? undefined : null
     });
 
     // 拦截所有 adstransparency.google.com / SearchService / RPC 端点
