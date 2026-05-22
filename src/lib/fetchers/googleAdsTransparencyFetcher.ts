@@ -20,6 +20,41 @@ import {
 const DEFAULT_TIMEOUT_MS = 60_000;
 const TARGET_HOST = "adstransparency.google.com";
 
+// 失败 dump：env GOOGLE_DUMP_DIR 指向写权限目录时启用，存 HTML + screenshot + 拦到的 XHR bodies
+async function dumpGoogleFailure(
+  page: import("playwright").Page,
+  tag: string,
+  xhrBodies: unknown[]
+): Promise<void> {
+  const dumpDir = process.env.GOOGLE_DUMP_DIR;
+  if (!dumpDir) return;
+  try {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    await fs.mkdir(dumpDir, { recursive: true });
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    const safeTag = tag.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 40);
+    const stem = path.join(dumpDir, `g-${ts}-${safeTag}`);
+    await page.screenshot({ path: `${stem}.png`, fullPage: false }).catch(() => undefined);
+    const html = await page.content().catch(() => "");
+    if (html) await fs.writeFile(`${stem}.html`, html.slice(0, 300_000)).catch(() => undefined);
+    if (xhrBodies.length > 0) {
+      // 各拦到的 body 单独存一个 json，方便对比哪个 RPC 才是 ads
+      for (let i = 0; i < Math.min(xhrBodies.length, 10); i++) {
+        await fs
+          .writeFile(
+            `${stem}.xhr-${i}.json`,
+            JSON.stringify(xhrBodies[i], null, 2).slice(0, 300_000)
+          )
+          .catch(() => undefined);
+      }
+    }
+    console.warn(`[google] dumped failure to ${stem}.{png,html,xhr-N.json} (xhr=${xhrBodies.length})`);
+  } catch (e) {
+    console.warn("[google] dump failed:", e instanceof Error ? e.message : String(e));
+  }
+}
+
 export type GoogleAdsFetchParams = {
   keyword: string;
   region: string; // ISO-3166 alpha-2, "US" / "GB" / "JP"...
@@ -329,6 +364,12 @@ export async function fetchGoogleAdsTransparency(
     }
 
     if (merged.length === 0) {
+      // dump 一下，方便复盘 DOM selector + XHR shape 是什么样
+      await dumpGoogleFailure(
+        session.page,
+        `noads-${params.keyword}-${params.region}`,
+        capturedBodies
+      ).catch(() => undefined);
       return {
         ok: false,
         error: "anti_bot",
