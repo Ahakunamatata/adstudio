@@ -404,6 +404,8 @@ function PlatformProgressCard({ entry, status }: { entry: MyProductPlatformProgr
   );
 }
 
+type FeedbackFilter = "all" | "liked" | "hide-disliked";
+
 function ScrapedAdsPanel({
   product,
   onOpenAd,
@@ -413,6 +415,9 @@ function ScrapedAdsPanel({
   onOpenAd: (scraped: MyProductScrapedAd) => void;
   onFeedback: (adId: string, feedback: "positive" | "negative" | null) => void;
 }) {
+  // 默认 hide-disliked：用户没标过的看全部，标 ✗ 的自动隐藏，让 shortlist 更干净
+  const [filter, setFilter] = useState<FeedbackFilter>("hide-disliked");
+
   if (product.status !== "done") {
     return (
       <div className="myp-detail-section">
@@ -432,14 +437,71 @@ function ScrapedAdsPanel({
     );
   }
 
+  // feedback 计数：用 adData.userFeedback；mock TopAd 不计入
+  let likedCount = 0;
+  let dislikedCount = 0;
+  for (const s of product.scrapedAds) {
+    const fb = s.adData?.userFeedback;
+    if (fb === "positive") likedCount += 1;
+    else if (fb === "negative") dislikedCount += 1;
+  }
+  // 用 filter 过滤展示列表（保留对象引用，map 时不重新 alloc）
+  const visibleAds = product.scrapedAds.filter((s) => {
+    const fb = s.adData?.userFeedback ?? null;
+    if (filter === "all") return true;
+    if (filter === "liked") return fb === "positive";
+    // hide-disliked: 默认隐藏明确 ✗ 的，未标 / ✓ 都显示
+    return fb !== "negative";
+  });
+  const hiddenCount = product.scrapedAds.length - visibleAds.length;
+
   return (
     <div className="myp-detail-section">
       <div className="myp-section-head">
         <h4>个性化爆款 · 仅与你产品相关</h4>
         <span className="myp-muted">点开查看完整数据 + Agent 复刻</span>
       </div>
+      {/* feedback 过滤 tab 行：默认隐藏 ✗，可切到只看 ✓ 或全部 */}
+      <div className="myp-fb-filter-row">
+        <button
+          type="button"
+          className={`myp-fb-tab ${filter === "all" ? "is-active" : ""}`}
+          onClick={() => setFilter("all")}
+        >
+          全部 <span className="myp-fb-tab-count">{product.scrapedAds.length}</span>
+        </button>
+        <button
+          type="button"
+          className={`myp-fb-tab ${filter === "hide-disliked" ? "is-active" : ""}`}
+          onClick={() => setFilter("hide-disliked")}
+        >
+          隐藏 ✗ <span className="myp-fb-tab-count">{product.scrapedAds.length - dislikedCount}</span>
+        </button>
+        <button
+          type="button"
+          className={`myp-fb-tab myp-fb-tab-liked ${filter === "liked" ? "is-active" : ""}`}
+          onClick={() => setFilter("liked")}
+          disabled={likedCount === 0}
+          title={likedCount === 0 ? "还没有标记为 ✓ 的广告" : "仅看你标 ✓ 的"}
+        >
+          ✓ Shortlist <span className="myp-fb-tab-count">{likedCount}</span>
+        </button>
+        {dislikedCount > 0 && filter !== "all" ? (
+          <span className="myp-fb-hidden-hint">已隐藏 {dislikedCount} 条 ✗</span>
+        ) : null}
+        {filter === "liked" && hiddenCount > 0 ? (
+          <span className="myp-fb-hidden-hint">已隐藏 {hiddenCount} 条未标记 / ✗</span>
+        ) : null}
+      </div>
+      {visibleAds.length === 0 ? (
+        <div className="myp-fb-empty">
+          {filter === "liked"
+            ? "还没有标记 ✓ 的广告。在卡片上点 ✓ 把它加入 shortlist。"
+            : "当前筛选下没有匹配的广告。"}
+        </div>
+      ) : null}
       <div className="myp-ad-grid">
-        {product.scrapedAds.map((scraped) => {
+        {visibleAds.map((scraped) => {
           // DB-backed ad（scraped.adData 存在）走新路径；mock TopAd 走老路径 topAdMap 查询。
           if (scraped.adData) {
             const d = scraped.adData;

@@ -7779,6 +7779,78 @@ dd {
   opacity: 1;
 }
 
+/*
+ * Feedback 过滤 tab 行（爆款列表顶部）
+ * ──────────────────────────────────
+ * 三段：全部 / 隐藏 ✗（默认）/ ✓ Shortlist。
+ * 每个 tab 自带计数徽章。Shortlist tab 没有 liked 时 disabled。
+ */
+.myp-fb-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 12px;
+  flex-wrap: wrap;
+}
+.myp-fb-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+.myp-fb-tab:hover:not(:disabled) {
+  border-color: var(--lime);
+  color: var(--text);
+}
+.myp-fb-tab.is-active {
+  background: var(--panel-3);
+  border-color: var(--lime);
+  color: var(--text);
+}
+.myp-fb-tab:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.myp-fb-tab-count {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  min-width: 18px;
+  text-align: center;
+}
+.myp-fb-tab.is-active .myp-fb-tab-count {
+  background: rgba(201, 255, 80, 0.18);
+  color: var(--lime);
+}
+.myp-fb-tab-liked.is-active {
+  border-color: var(--lime);
+  background: rgba(201, 255, 80, 0.08);
+}
+.myp-fb-hidden-hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: 4px;
+}
+.myp-fb-empty {
+  padding: 32px 16px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  background: var(--panel-3);
+}
+
 .myp-skeleton-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
