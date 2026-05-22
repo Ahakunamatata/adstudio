@@ -592,14 +592,17 @@ export async function fetchTiktokAds(
       };
     }
 
-    // 客户端 keyword 过滤：search XHR 没成功时，从 trending 里挑包含 keyword 的
-    // 简单 case-insensitive substring 匹配。trending feed 有 brand_name +
-    // ad_creative_bodies + ad_creative_titles，几个字段都查一遍。
+    // 2026-05-22 调整：search XHR 没成功时，**不再 substring filter trending**。
+    // 实测 trending 是跨品类高质量广告池（房产/美妆/服装/家居都有），
+    // 用户 keyword 像 "fitness app" 字面命中率几乎 0，但内容上可能很相关。
+    // 直接全部入库，让 query 时的 vector + LLM rerank 自己挑相关的 —— 这样：
+    //   - 池子大（每次 30 条入库，跨产品共享）
+    //   - 不漏掉"字面不匹配但语义相关"的好广告
+    //   - 用户 query 时按自家产品语义找最近的，自然过滤
     let ads = parsed.ads;
-    if (wantSearch && usedSource !== "search" && keywordForSearch.length > 0) {
-      const needle = keywordForSearch.toLowerCase();
-      const before = ads.length;
-      ads = ads.filter((ad) => {
+    if (wantSearch && usedSource !== "search") {
+      // 记录一下供日志追溯，便于以后判断"trending 池子覆盖够不够"
+      const matchedByKeyword = ads.filter((ad) => {
         const hay = [
           ad.advertiserName ?? "",
           ...(ad.adCreativeBodies ?? []),
@@ -607,10 +610,10 @@ export async function fetchTiktokAds(
         ]
           .join(" ")
           .toLowerCase();
-        return hay.includes(needle);
-      });
+        return hay.includes(keywordForSearch.toLowerCase());
+      }).length;
       console.warn(
-        `[tiktok] client-filter "${keywordForSearch}": ${before} trending → ${ads.length} matched`
+        `[tiktok] keyword="${keywordForSearch}" trending=${ads.length} (substring match ${matchedByKeyword} — 入库全部，靠下游 vector rerank 找相关)`
       );
     }
     ads = ads.slice(0, limit);
