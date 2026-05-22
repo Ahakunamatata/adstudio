@@ -114,6 +114,8 @@ type MatchedAdFromApi = {
   pageLikeCount: number | null;
   // LLM rerank 后的"为什么推荐这条"chip 文案，中文 <35 字
   recommendReason: string | null;
+  // 用户反馈
+  userFeedback?: "positive" | "negative" | null;
   deliveryStartAt: string | null;
   deliveryStopAt: string | null;
   firstSeenAt: string;
@@ -210,6 +212,7 @@ function dbAdToScraped(
       ctaText: ad.ctaText,
       pageLikeCount: ad.pageLikeCount,
       recommendReason: ad.recommendReason,
+      userFeedback: ad.userFeedback ?? null,
       deliveryStartAt: ad.deliveryStartAt,
       deliveryStopAt: ad.deliveryStopAt
     }
@@ -926,6 +929,46 @@ export function useMyProducts() {
     [cancelTimers, scheduleScrape, updateProduct]
   );
 
+  // 用户对某条广告打 ✓ / ✗ 反馈 —— PATCH /matched-ads + 立刻 optimistic
+  // 更新本地 scrapedAd.adData.userFeedback。toggle 行为：再点同样按钮 → null。
+  const setAdFeedback = useCallback(
+    async (
+      productId: string,
+      adId: string,
+      feedback: "positive" | "negative" | null
+    ) => {
+      // optimistic UI 更新（先改本地，再发 API；失败回滚）
+      setProducts((prev) =>
+        prev.map((p) => {
+          if (p.id !== productId) return p;
+          return {
+            ...p,
+            scrapedAds: p.scrapedAds.map((s) => {
+              if (s.adId !== adId || !s.adData) return s;
+              return { ...s, adData: { ...s.adData, userFeedback: feedback } };
+            })
+          };
+        })
+      );
+      try {
+        const response = await fetch(
+          `/api/my-products/${productId}/matched-ads`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ adId, userFeedback: feedback })
+          }
+        );
+        if (!response.ok) {
+          console.warn("[setAdFeedback] PATCH failed:", response.status);
+        }
+      } catch (error) {
+        console.warn("[setAdFeedback] network error:", error);
+      }
+    },
+    []
+  );
+
   return useMemo(
     () => ({
       products,
@@ -933,8 +976,9 @@ export function useMyProducts() {
       createProduct,
       removeProduct,
       rescrape,
-      setStatus
+      setStatus,
+      setAdFeedback
     }),
-    [products, hydrated, createProduct, removeProduct, rescrape, setStatus]
+    [products, hydrated, createProduct, removeProduct, rescrape, setStatus, setAdFeedback]
   );
 }

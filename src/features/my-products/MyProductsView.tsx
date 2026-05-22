@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
 import type {
   MyProduct,
   MyProductPlatformProgress,
@@ -83,7 +83,7 @@ function buildDbAdClonePrompt(scraped: MyProductScrapedAd, productName: string):
 }
 
 export function MyProductsView({ onCloneInAgent, onReplicateAd }: MyProductsViewProps) {
-  const { products, hydrated, createProduct, removeProduct, rescrape } = useMyProducts();
+  const { products, hydrated, createProduct, removeProduct, rescrape, setAdFeedback } = useMyProducts();
   const [preferredId, setPreferredId] = useState<string | null>(null);
   const [draftOpen, setDraftOpen] = useState(false);
   const [previewTopAdId, setPreviewTopAdId] = useState<string | null>(null);
@@ -221,6 +221,7 @@ export function MyProductsView({ onCloneInAgent, onReplicateAd }: MyProductsView
             onRescrape={() => rescrape(selected.id)}
             onRemove={() => removeProduct(selected.id)}
             onOpenAd={handleOpenAd}
+            onFeedback={(adId, fb) => setAdFeedback(selected.id, adId, fb)}
           />
         ) : (
           <div className="myp-detail-empty">从左侧选择一个产品</div>
@@ -265,12 +266,14 @@ function ProductDetail({
   product,
   onRescrape,
   onRemove,
-  onOpenAd
+  onOpenAd,
+  onFeedback
 }: {
   product: MyProduct;
   onRescrape: () => void;
   onRemove: () => void;
   onOpenAd: (scraped: MyProductScrapedAd) => void;
+  onFeedback: (adId: string, feedback: "positive" | "negative" | null) => void;
 }) {
   const isWorking = product.status === "parsing" || product.status === "scraping";
   return (
@@ -345,7 +348,7 @@ function ProductDetail({
 
         <ProgressPanel product={product} />
 
-        <ScrapedAdsPanel product={product} onOpenAd={onOpenAd} />
+        <ScrapedAdsPanel product={product} onOpenAd={onOpenAd} onFeedback={onFeedback} />
       </div>
     </section>
   );
@@ -401,7 +404,15 @@ function PlatformProgressCard({ entry, status }: { entry: MyProductPlatformProgr
   );
 }
 
-function ScrapedAdsPanel({ product, onOpenAd }: { product: MyProduct; onOpenAd: (scraped: MyProductScrapedAd) => void }) {
+function ScrapedAdsPanel({
+  product,
+  onOpenAd,
+  onFeedback
+}: {
+  product: MyProduct;
+  onOpenAd: (scraped: MyProductScrapedAd) => void;
+  onFeedback: (adId: string, feedback: "positive" | "negative" | null) => void;
+}) {
   if (product.status !== "done") {
     return (
       <div className="myp-detail-section">
@@ -446,56 +457,91 @@ function ScrapedAdsPanel({ product, onOpenAd }: { product: MyProduct; onOpenAd: 
                 ? `${(d.pageLikeCount / 1_000_000).toFixed(1)}M`
                 : `${Math.round(d.pageLikeCount / 1000)}K`
               : d.pageLikeCount?.toString();
+            // ✓/✗ 反馈状态：DB 持久化的 userFeedback。这里做 toggle —— 再点一次就清空（null）
+            const currentFeedback = d.userFeedback ?? null;
+            const handleFb = (
+              e: MouseEvent<HTMLButtonElement>,
+              next: "positive" | "negative"
+            ) => {
+              // 父级 card 是 button，阻止冒泡，否则点 ✓ 就同时打开了 detail modal
+              e.stopPropagation();
+              onFeedback(scraped.adId, currentFeedback === next ? null : next);
+            };
             return (
-              <button
+              <div
                 key={`${scraped.adId}-${scraped.platform}`}
-                type="button"
-                className="myp-ad-card"
-                onClick={() => onOpenAd(scraped)}
+                className={`myp-ad-card-wrap ${currentFeedback === "positive" ? "is-positive" : ""} ${currentFeedback === "negative" ? "is-negative" : ""}`}
               >
-                <div className={`myp-ad-thumb ${d.thumbnailUrl ? "" : `myp-ad-thumb-fallback-${sourceKey}`}`} style={thumbStyle}>
-                  {d.thumbnailUrl ? null : (
-                    <div className="myp-ad-thumb-letter">{fallbackInitial}</div>
-                  )}
-                  <div className="myp-ad-region">
-                    {d.regionFlag ?? "🌐"} {d.region ?? ""}
-                  </div>
-                  <div className="myp-ad-platform">
-                    <span className={`myp-ad-source-badge myp-ad-source-${sourceKey}`}>{sourceBadge}</span>
-                    {d.platformLabel ?? scraped.platform}
-                  </div>
-                </div>
-                <div className="myp-ad-body">
-                  <div className="myp-ad-title">{d.title}</div>
-                  <div className="myp-ad-sub">
-                    {d.advertiserName ?? "(未知广告主)"}
-                    {likes ? ` · ${likes} likes` : ""}
-                    {d.deliveryStartAt ? ` · ${d.deliveryStartAt.slice(0, 10)} 起投` : ""}
-                  </div>
-                  {/* LLM rerank 推荐理由 chip —— "AI 真的懂"的核心展示 */}
-                  {d.recommendReason ? (
-                    <div className="myp-ad-reason" title={d.recommendReason}>
-                      💡 {d.recommendReason}
+                <button
+                  type="button"
+                  className="myp-ad-card"
+                  onClick={() => onOpenAd(scraped)}
+                >
+                  <div className={`myp-ad-thumb ${d.thumbnailUrl ? "" : `myp-ad-thumb-fallback-${sourceKey}`}`} style={thumbStyle}>
+                    {d.thumbnailUrl ? null : (
+                      <div className="myp-ad-thumb-letter">{fallbackInitial}</div>
+                    )}
+                    <div className="myp-ad-region">
+                      {d.regionFlag ?? "🌐"} {d.region ?? ""}
                     </div>
-                  ) : null}
-                  {(d.ctaText || d.landingPageUrl) ? (
-                    <div className="myp-ad-cta-row">
-                      {d.ctaText ? <span className="myp-ad-cta">{d.ctaText}</span> : null}
-                      {d.landingPageUrl ? (
-                        <span className="myp-ad-landing" title={d.landingPageUrl}>
-                          → {new URL(d.landingPageUrl).hostname.replace(/^www\./, "")}
-                        </span>
-                      ) : null}
+                    <div className="myp-ad-platform">
+                      <span className={`myp-ad-source-badge myp-ad-source-${sourceKey}`}>{sourceBadge}</span>
+                      {d.platformLabel ?? scraped.platform}
                     </div>
-                  ) : null}
-                  <div className="myp-ad-keyword-row">
-                    <span className="myp-ad-score">相关性 {scraped.relevanceScore}</span>
-                    {scraped.matchedKeywords.slice(0, 2).map((keyword) => (
-                      <span key={keyword} className="myp-ad-keyword">{keyword}</span>
-                    ))}
                   </div>
+                  <div className="myp-ad-body">
+                    <div className="myp-ad-title">{d.title}</div>
+                    <div className="myp-ad-sub">
+                      {d.advertiserName ?? "(未知广告主)"}
+                      {likes ? ` · ${likes} likes` : ""}
+                      {d.deliveryStartAt ? ` · ${d.deliveryStartAt.slice(0, 10)} 起投` : ""}
+                    </div>
+                    {/* LLM rerank 推荐理由 chip —— "AI 真的懂"的核心展示 */}
+                    {d.recommendReason ? (
+                      <div className="myp-ad-reason" title={d.recommendReason}>
+                        💡 {d.recommendReason}
+                      </div>
+                    ) : null}
+                    {(d.ctaText || d.landingPageUrl) ? (
+                      <div className="myp-ad-cta-row">
+                        {d.ctaText ? <span className="myp-ad-cta">{d.ctaText}</span> : null}
+                        {d.landingPageUrl ? (
+                          <span className="myp-ad-landing" title={d.landingPageUrl}>
+                            → {new URL(d.landingPageUrl).hostname.replace(/^www\./, "")}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <div className="myp-ad-keyword-row">
+                      <span className="myp-ad-score">相关性 {scraped.relevanceScore}</span>
+                      {scraped.matchedKeywords.slice(0, 2).map((keyword) => (
+                        <span key={keyword} className="myp-ad-keyword">{keyword}</span>
+                      ))}
+                    </div>
+                  </div>
+                </button>
+                {/* ✓/✗ 反馈按钮：浮在卡片右上角，独立于 card 的 onClick */}
+                <div className="myp-ad-feedback-row">
+                  <button
+                    type="button"
+                    className={`myp-ad-feedback-btn myp-ad-feedback-pos ${currentFeedback === "positive" ? "is-active" : ""}`}
+                    onClick={(e) => handleFb(e, "positive")}
+                    title="这条对我的产品有帮助"
+                    aria-label="标记为有用"
+                  >
+                    ✓
+                  </button>
+                  <button
+                    type="button"
+                    className={`myp-ad-feedback-btn myp-ad-feedback-neg ${currentFeedback === "negative" ? "is-active" : ""}`}
+                    onClick={(e) => handleFb(e, "negative")}
+                    title="这条不相关 / 不感兴趣"
+                    aria-label="标记为不相关"
+                  >
+                    ✗
+                  </button>
                 </div>
-              </button>
+              </div>
             );
           }
 

@@ -326,6 +326,8 @@ export const dbAdInlineSchema = z.object({
   pageLikeCount: z.number().nullable().optional(),
   // LLM rerank 后的"为什么推荐这条"推荐理由（中文，<35 字）
   recommendReason: z.string().nullable().optional(),
+  // 用户反馈：✓ / ✗ / null（默认未评价）。PATCH /api/.../matched-ads 写回。
+  userFeedback: z.enum(["positive", "negative"]).nullable().optional(),
   deliveryStartAt: z.string().nullable().optional(),
   deliveryStopAt: z.string().nullable().optional()
 });

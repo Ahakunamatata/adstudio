@@ -7679,6 +7679,106 @@ dd {
   border: 1px solid var(--line);
 }
 
+/*
+ * ✓/✗ 反馈按钮
+ * ───────────────
+ * 浮在卡片右上角（缩略图区域之上）。点击 stopPropagation，不会触发 detail modal。
+ * Toggle 行为：再点一次同一个就清空（feedback=null），点另一边就切换。
+ * 视觉状态：active 时绿/红实色，未激活时半透明，hover 才显出来。
+ */
+.myp-ad-card-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  /* 让 wrap 自己撑满 grid cell，card 才能拿到完整宽度 */
+}
+.myp-ad-card-wrap > .myp-ad-card {
+  flex: 1 1 auto;
+  /* card 本来就是直接 grid item，现在套了一层 wrap，宽度需要 100% 才不缩水 */
+  width: 100%;
+}
+.myp-ad-feedback-row {
+  position: absolute;
+  /* platform 徽章在缩略图右上角（top:8/right:8）—— 反馈按钮挪到缩略图右下 */
+  /* 缩略图 aspect-ratio 4/3 → 假设卡片宽 260px，缩略图高约 195px。
+     按钮放在 195 - 32 = 163px 处，给底部 8px gap → top: 163px。
+     但缩略图高度随宽度变化，所以用 calc(aspect-ratio) 不靠谱。
+     更稳妥：放在卡片右上角往内 8px，但避开 platform 徽章 →
+     让 platform 徽章往左挪一点（在 .myp-ad-platform 上 right:48px）
+     就有空间了。 */
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: auto;
+}
+/* 给 platform 徽章腾出位置（feedback 按钮要占右上角） */
+.myp-ad-card-wrap .myp-ad-platform {
+  right: 76px;
+}
+/* card 本身就是 button，hover 时按钮浮现；feedback 已标记的卡片永远显示按钮 */
+.myp-ad-card-wrap:hover .myp-ad-feedback-row,
+.myp-ad-card-wrap.is-positive .myp-ad-feedback-row,
+.myp-ad-card-wrap.is-negative .myp-ad-feedback-row {
+  opacity: 1;
+}
+.myp-ad-feedback-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(9, 10, 10, 0.82);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, transform 120ms ease;
+  backdrop-filter: blur(4px);
+}
+.myp-ad-feedback-btn:hover {
+  transform: scale(1.08);
+}
+.myp-ad-feedback-pos:hover {
+  background: rgba(201, 255, 80, 0.18);
+  border-color: rgba(201, 255, 80, 0.45);
+  color: var(--lime);
+}
+.myp-ad-feedback-neg:hover {
+  background: rgba(255, 95, 95, 0.18);
+  border-color: rgba(255, 95, 95, 0.45);
+  color: #ff7a7a;
+}
+.myp-ad-feedback-pos.is-active {
+  background: var(--lime);
+  border-color: var(--lime);
+  color: #0a0c0a;
+}
+.myp-ad-feedback-neg.is-active {
+  background: #ff5f5f;
+  border-color: #ff5f5f;
+  color: #1a0808;
+}
+/* 整张卡片在已标记时的左边竖线指示（不抢戏，只是让人快速扫到自己标过的） */
+.myp-ad-card-wrap.is-positive .myp-ad-card {
+  border-color: rgba(201, 255, 80, 0.55);
+  box-shadow: inset 3px 0 0 var(--lime);
+}
+.myp-ad-card-wrap.is-negative .myp-ad-card {
+  border-color: rgba(255, 95, 95, 0.4);
+  box-shadow: inset 3px 0 0 #ff5f5f;
+  /* 不喜欢的稍微 dim 一点，但不消失，方便用户改主意 */
+  opacity: 0.62;
+}
+.myp-ad-card-wrap.is-negative:hover .myp-ad-card {
+  opacity: 1;
+}
+
 .myp-skeleton-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
