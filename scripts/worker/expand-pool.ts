@@ -114,10 +114,12 @@ async function main() {
   const perSource = await pendingPerSource();
   console.log(`  current backlog: ${backlog} pending/running`, perSource);
 
-  // 早期硬上限：远超全局上限时 skip。但即使触发，也保留 fairness —— 任何 source
-  // 当前 pending < PER_SOURCE_PENDING_CAP 时仍允许插入，防止 google 这种新 source
-  // 永远被 meta + tiktok 的存量挤掉。
-  const overAllSource = Object.keys(perSource).every(
+  // 早期硬上限：所有已知 source 都满了才 skip 整轮。
+  // ⚠️ 注意：perSource 只列出当前 pending/running > 0 的 source。某个 source
+  // 一条 pending 都没有时不在 perSource 里 —— 但它显然 <cap，所以要给它机会。
+  // 因此要显式枚举 schema 里的所有 source，而不是 Object.keys(perSource)。
+  const ALL_SOURCES = ["tiktok", "meta", "google"] as const;
+  const overAllSource = ALL_SOURCES.every(
     (s) => (perSource[s] ?? 0) >= PER_SOURCE_PENDING_CAP
   );
   if (backlog >= MAX_PENDING_BACKLOG && overAllSource) {
