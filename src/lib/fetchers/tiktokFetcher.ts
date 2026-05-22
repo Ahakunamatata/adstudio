@@ -548,22 +548,20 @@ export async function fetchTiktokAds(
       };
     }
 
-    // 调用方要求 search，但只拿到 trending —— 当成 anti-bot 失败上报，
-    // 否则匹配阶段会把 trending 当成"该 keyword 的爆款"，污染检索。
+    // 调用方要求 search 但没拿到 search XHR：
+    // 2026-05-22 策略调整：不再当 anti-bot 失败上报，改为降级用 trending 数据
+    // 客户端过滤。trending feed 有 ~30 条/region，过滤出包含 keyword 的就行 ——
+    // 比"完全失败"好得多。原因：TikTok 的 search UI 即使 stealth + 正确按钮 click
+    // 也偶发不发 search XHR（猜测：需要更复杂的鼠标轨迹模拟才能过反爬）。
+    // 用 trending 兜底虽然召回少了，但起码有数据。
     if (wantSearch && usedSource !== "search") {
-      const kind = classifyTiktokError({
-        httpStatus: listResponseStatus ?? undefined,
-        pageContent
-      });
-      // dump 一下方便复盘：URL 路径 + input fallback 都没拿到 search XHR 时
-      // 抓个截图 + HTML，回头看是 selector 变了 还是 captcha 还是其他
-      await dumpTiktokFailure(session.page, `search-miss-${keywordForSearch}`);
-      return {
-        ok: false,
-        error: kind === "unknown" ? "anti_bot" : kind,
-        message: `Captured trending feed but search XHR for keyword="${keywordForSearch}" never returned (likely anti-bot / search input not rendered)`,
-        statusCode: listResponseStatus ?? undefined
-      };
+      // 留个 dump 方便后续真打通 search 时回来 debug，但不阻塞主流程
+      await dumpTiktokFailure(session.page, `search-miss-${keywordForSearch}`)
+        .catch(() => undefined);
+      console.warn(
+        `[tiktok] search XHR miss for "${keywordForSearch}" - falling back to client-side keyword filter on trending feed`
+      );
+      // 落到下面 parseListResponse + 客户端过滤
     }
 
     const envelopeCode = capturedBody.code;
@@ -594,7 +592,28 @@ export async function fetchTiktokAds(
       };
     }
 
-    const ads = parsed.ads.slice(0, limit);
+    // 客户端 keyword 过滤：search XHR 没成功时，从 trending 里挑包含 keyword 的
+    // 简单 case-insensitive substring 匹配。trending feed 有 brand_name +
+    // ad_creative_bodies + ad_creative_titles，几个字段都查一遍。
+    let ads = parsed.ads;
+    if (wantSearch && usedSource !== "search" && keywordForSearch.length > 0) {
+      const needle = keywordForSearch.toLowerCase();
+      const before = ads.length;
+      ads = ads.filter((ad) => {
+        const hay = [
+          ad.advertiserName ?? "",
+          ...(ad.adCreativeBodies ?? []),
+          ...(ad.adCreativeTitles ?? [])
+        ]
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(needle);
+      });
+      console.warn(
+        `[tiktok] client-filter "${keywordForSearch}": ${before} trending → ${ads.length} matched`
+      );
+    }
+    ads = ads.slice(0, limit);
 
     return {
       ok: true,
