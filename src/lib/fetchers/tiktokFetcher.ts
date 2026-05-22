@@ -29,6 +29,9 @@ import {
 } from "./playwright/browser";
 
 const DEFAULT_TIMEOUT_MS = 90_000; // search 模式要 page load + 等 trending + search input + 等 search XHR；TikTok 是 SPA 永远不 networkidle
+// 硬上限：单次 fetch 调用绝对不能超过这个时间。超出就强制关闭 context 让 Playwright 调用都抛错。
+// 之前 10min/attempt 是因为内部 AbortController 是软标记，Playwright 不读 —— 现在改成关 context 真打断。
+const HARD_TIMEOUT_MS = Number(process.env.TIKTOK_HARD_TIMEOUT_MS ?? 120_000);
 const TARGET_HOST = "ads.tiktok.com";
 const LIST_API_PATH = "/creative_radar_api/v1/top_ads/v2/list";
 // 当 XHR URL 里出现 keyword= 时是真搜索结果（不是 top trending）
@@ -272,12 +275,22 @@ export async function fetchTiktokAds(
   const limit = Math.max(1, Math.min(params.limit ?? 30, 50));
   const period = periodFromWindow(params.timeWindow);
 
-  // 组合 caller signal + 内部 30s timeout
+  // 组合 caller signal + 内部 timeout
   const internal = new AbortController();
   const timeoutMs = DEFAULT_TIMEOUT_MS;
   const timeoutHandle = setTimeout(() => internal.abort(), timeoutMs);
   const onCallerAbort = () => internal.abort();
   params.signal?.addEventListener("abort", onCallerAbort);
+  // 硬看门狗：HARD_TIMEOUT_MS 一到，把 context 强制关掉 ——
+  // 任何正在 await 的 Playwright 调用都会抛 'Target closed' 立即返回，避免单次 fetcher 跑 10 分钟。
+  let hardTimeoutFired = false;
+  const hardTimeout = setTimeout(() => {
+    hardTimeoutFired = true;
+    internal.abort();
+    if (session) {
+      session.context.close().catch(() => undefined);
+    }
+  }, HARD_TIMEOUT_MS);
 
   let session: BrowserSession | null = null;
   // 我们维护两个 XHR 槽位：trendingBody（无 keyword） + searchBody（含 keyword=）。
@@ -591,20 +604,28 @@ export async function fetchTiktokAds(
     };
   } catch (error) {
     // 任何未覆盖的运行时异常都收敛到 unknown
+    const msg = error instanceof Error ? error.message : String(error);
+    const lower = msg.toLowerCase();
     const isAbort =
       error instanceof Error &&
       (error.name === "AbortError" ||
-        error.message.toLowerCase().includes("aborted") ||
-        error.message.toLowerCase().includes("timeout"));
+        lower.includes("aborted") ||
+        lower.includes("timeout") ||
+        lower.includes("target closed") ||
+        lower.includes("context closed") ||
+        lower.includes("browser has been closed"));
     return {
       ok: false,
       error: isAbort ? "network" : "unknown",
-      message: isAbort
-        ? `request timed out after ${timeoutMs}ms`
-        : `unexpected: ${error instanceof Error ? error.message : String(error)}`
+      message: hardTimeoutFired
+        ? `fetcher hard timeout: ${HARD_TIMEOUT_MS}ms exceeded (context force-closed)`
+        : isAbort
+          ? `request timed out after ${timeoutMs}ms`
+          : `unexpected: ${msg}`
     };
   } finally {
     clearTimeout(timeoutHandle);
+    clearTimeout(hardTimeout);
     params.signal?.removeEventListener("abort", onCallerAbort);
     if (session) {
       await session.dispose();
