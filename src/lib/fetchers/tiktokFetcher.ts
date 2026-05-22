@@ -34,6 +34,31 @@ const LIST_API_PATH = "/creative_radar_api/v1/top_ads/v2/list";
 // 当 XHR URL 里出现 keyword= 时是真搜索结果（不是 top trending）
 const SEARCH_QUERY_MARKER = "keyword=";
 
+// 失败 diagnostic dump：env TIKTOK_DUMP_DIR 指向写权限目录（如 /tmp）时启用
+// dump screenshot + HTML，方便看 selector 变化 / captcha / 空页。
+// 不抛错 —— 失败也别影响主流程。
+async function dumpTiktokFailure(
+  page: import("playwright").Page,
+  tag: string
+): Promise<void> {
+  const dumpDir = process.env.TIKTOK_DUMP_DIR;
+  if (!dumpDir) return;
+  try {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    await fs.mkdir(dumpDir, { recursive: true });
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    const safeTag = tag.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 40);
+    const stem = path.join(dumpDir, `tt-${ts}-${safeTag}`);
+    await page.screenshot({ path: `${stem}.png`, fullPage: false }).catch(() => undefined);
+    const html = await page.content().catch(() => "");
+    if (html) await fs.writeFile(`${stem}.html`, html.slice(0, 200_000)).catch(() => undefined);
+    console.warn(`[tiktok] dumped failure artifacts to ${stem}.{png,html}`);
+  } catch (e) {
+    console.warn(`[tiktok] dump failed:`, e instanceof Error ? e.message : String(e));
+  }
+}
+
 export type TiktokTimeWindow = "7d" | "30d" | "90d" | "180d";
 
 export type TiktokFetchParams = {
@@ -298,15 +323,22 @@ export async function fetchTiktokAds(
       }
     });
 
-    // 构造目标 URL。先打开 trending 页（不带 keyword），后面再 type + Enter 触发
-    // 真正的 search XHR。这样的好处：能比较 trending vs search 两份 payload，
-    // 也能在 search 失败时降级到 trending 兜底。
+    // 构造目标 URL。
+    // 2026-05-22 升级：search 模式直接把 &keyword=X 塞进 URL，让 SPA 在 mount
+    // 阶段自己发 search XHR —— 不依赖 input 交互（旧路径失败率 100%：
+    // trending XHR 拿到了，但 input 输入 + Enter 不触发 search XHR）。
+    // 旧的 input-based fallback 还保留在下面，万一 URL 路径也不行能兜一层。
     const queryParts: string[] = [
       `period=${period}`,
       `region=${encodeURIComponent(params.region)}`
     ];
     if (params.industry) {
       queryParts.push(`industry=${encodeURIComponent(params.industry)}`);
+    }
+    if (wantSearch && keywordForSearch.length > 0) {
+      // 优先用 URL 触发 search —— TikTok Creative Center SPA 在 mount 时会读
+      // URL 里的 keyword 参数 → 自动触发 search XHR。
+      queryParts.push(`keyword=${encodeURIComponent(keywordForSearch)}`);
     }
     const targetUrl =
       `https://${TARGET_HOST}/business/creativecenter/inspiration/topads/pc/en?` +
@@ -361,11 +393,26 @@ export async function fetchTiktokAds(
       }
     }
 
-    // ── 如果需要 search：找搜索框、输入 keyword、回车、等 search XHR ──
+    // URL 已经带 keyword → 先等 SPA 自己发 search XHR（20s 上限）。
+    // 多数情况下应该这里就够了，下面 input fallback 通常用不上。
+    if (wantSearch && keywordForSearch.length > 0 && !searchBody && !internal.signal.aborted) {
+      try {
+        await session.page.waitForResponse(
+          (r) =>
+            r.url().includes(LIST_API_PATH) &&
+            r.url().includes(SEARCH_QUERY_MARKER),
+          { timeout: 20_000 }
+        );
+      } catch {
+        // URL 触发失败，下面 input fallback 接力
+      }
+    }
+
+    // ── 如果上面 URL 路径没拿到 search XHR：回退到 input + Enter ──
     // TikTok 的搜索框不是原生 <input>，是带 data-testid="cc_commonCom_autoComplete"
     // 的自定义 div + 内嵌 contenteditable / shadow input。所以我们点 wrapper 让它
     // focus，再用 page.keyboard.type 让事件正确进 React 状态。
-    if (wantSearch && keywordForSearch.length > 0 && !internal.signal.aborted) {
+    if (wantSearch && keywordForSearch.length > 0 && !searchBody && !internal.signal.aborted) {
       // 优先级：banner 主搜索框 > 列表内嵌过滤搜索框 > 任意带 search 的 div > 原生 input
       const searchWrapperSelectors = [
         "[data-testid='cc_commonCom_autoComplete']",
@@ -463,6 +510,9 @@ export async function fetchTiktokAds(
         httpStatus: listResponseStatus ?? undefined,
         pageContent
       });
+      // dump 一下方便复盘：URL 路径 + input fallback 都没拿到 search XHR 时
+      // 抓个截图 + HTML，回头看是 selector 变了 还是 captcha 还是其他
+      await dumpTiktokFailure(session.page, `search-miss-${keywordForSearch}`);
       return {
         ok: false,
         error: kind === "unknown" ? "anti_bot" : kind,
