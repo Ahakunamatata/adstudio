@@ -66,7 +66,7 @@ const SEED_KEYWORDS = [
 const SEED_REGIONS = ["US", "GB", "DE", "JP", "IN", "BR"];
 // Meta 不走 Graph API（App 没 Identity Verification），改走 Web 抓 Ad Library
 // 公开页面（metaAdLibraryFetcher.ts）。Google 留 Sprint C。
-const SEED_SOURCES: Array<"tiktok" | "meta" | "google"> = ["tiktok", "meta"];
+const SEED_SOURCES: Array<"tiktok" | "meta" | "google"> = ["tiktok", "meta", "google"];
 
 // Meta 对部分关键词标"敏感"（武器 / 防盗 / 监控）→ captcha 高发，
 // 这些只让 TikTok 跑，不投 Meta（避免浪费 worker 周期）。

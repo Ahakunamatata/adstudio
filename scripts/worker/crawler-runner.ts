@@ -22,6 +22,7 @@ import { sql } from "drizzle-orm";
 import { db, schema } from "../../src/lib/db";
 import { fetchTiktokAds } from "../../src/lib/fetchers/tiktokFetcher";
 import { fetchMetaAdLibrary } from "../../src/lib/fetchers/metaAdLibraryFetcher";
+import { fetchGoogleAdsTransparency } from "../../src/lib/fetchers/googleAdsTransparencyFetcher";
 import { upsertAdRow } from "../../src/lib/db/upsertAd";
 import type { NewAd } from "../../src/lib/db/schema";
 
@@ -152,7 +153,23 @@ async function runFetcherOnce(job: {
         result.error === "rate_limited"
     };
   }
-  // Google 还没支持
+  if (job.source === "google") {
+    const result = await fetchGoogleAdsTransparency({
+      keyword: job.keyword,
+      region: job.region,
+      limit: 30
+    });
+    if (result.ok) return { ok: true, ads: result.ads };
+    return {
+      ok: false,
+      error: result.error,
+      message: result.message,
+      retryable:
+        result.error === "network" ||
+        result.error === "anti_bot" ||
+        result.error === "rate_limited"
+    };
+  }
   return {
     ok: false,
     error: "unsupported",
