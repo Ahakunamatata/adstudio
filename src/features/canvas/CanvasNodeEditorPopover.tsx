@@ -1,29 +1,20 @@
 "use client";
 
-import { useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
-import {
-  ArrowUp,
-  FileText,
-  Image as ImageIcon,
-  Lock,
-  LockOpen,
-  Video,
-  WandSparkles
-} from "lucide-react";
+import { useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { UploadCloud } from "lucide-react";
 import type { CanvasNode, CanvasNodeKind, CanvasNodeSettings } from "@/lib/domain/schemas";
-import type { AdCanvasNodeData } from "./types";
+import { CanvasGenerationComposer } from "@/features/generation/CanvasGenerationComposer";
+import type { CanvasGenerationResult } from "./types";
 
 type CanvasNodeEditorPopoverProps = {
   node: CanvasNode;
-  parentRefs: AdCanvasNodeData["parentRefs"];
-  availableRefs: CanvasNode[];
+  parentNodes: CanvasNode[];
   style?: CSSProperties;
-  onClose: () => void;
-  onConnectParentRef: (sourceNodeId: string, targetNodeId: string) => void;
   onDisconnectParentRef: (sourceNodeId: string, targetNodeId: string) => void;
-  onLockNode: (nodeId: string) => void;
-  onRunNode: (nodeId: string) => void;
-  onSetPrimaryVersion: (nodeId: string, versionId: string) => void;
+  onStartNodeGeneration: (nodeId: string, prompt: string, model: string, settings: CanvasNodeSettings) => void;
+  onCompleteNodeGeneration: (nodeId: string, result: CanvasGenerationResult) => void;
+  onFailNodeGeneration: (nodeId: string, errorMessage: string) => void;
+  onPanelDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
   onUpdateNodeSettings: (
     nodeId: string,
     title: string,
@@ -33,386 +24,255 @@ type CanvasNodeEditorPopoverProps = {
   ) => void;
 };
 
-const imageRatioOptions = ["9:16", "1:1", "16:9", "4:5"];
-const videoRatioOptions = ["9:16", "16:9", "1:1"];
-const imageResolutionOptions = ["1k", "2k", "4k"];
-const videoResolutionOptions = ["720p", "1080p"];
-const durationOptions = ["4s", "6s", "8s", "10s"];
-const batchOptions = ["1", "2", "4"];
-const cameraOptions = ["摄影机控制", "固定镜头", "推近", "手持"];
-
 function stopCanvasEvent(event: ReactMouseEvent) {
   event.stopPropagation();
+}
+
+function isPanelDragTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return !target.closest(
+    "button, input, textarea, select, [contenteditable='true'], .slot-stack, .composer-menu, .composer-dropdown, .composer-prompt, .generation-slot-file-input"
+  );
 }
 
 function isTextLikeNode(kind: CanvasNodeKind) {
   return kind === "text" || kind === "script" || kind === "prompt" || kind === "plan";
 }
 
-function getModelOptions(kind: CanvasNodeKind) {
-  if (kind === "image") return ["全能图片V2-低价渠道版", "GPT Image", "Flux 1.1 Pro", "Nano Banana 2"];
-  if (kind === "video") return ["happyhorse-1.0", "Seedance 2.0", "Kling 2.1", "Runway Gen-4"];
-  if (kind === "upload") return ["Manual Upload", "Asset Library", "Product Pack"];
-  return ["Ad Strategy Agent", "Gemini Multimodal", "GPT-4.1 Mini"];
+function getUploadedMediaKind(file: File): "image" | "video" | "file" {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("video/")) return "video";
+  return "file";
 }
 
-function getDefaultSettings(node: CanvasNode): CanvasNodeSettings {
-  const common = {
-    prompt: node.settings?.prompt ?? node.input
-  };
+type UploadedMediaMetadata = {
+  width?: number;
+  height?: number;
+  aspectRatio?: string;
+  posterDataUrl?: string;
+};
 
-  if (node.kind === "video") {
-    return {
-      ...common,
-      ratio: "9:16",
-      resolution: "720p",
-      duration: "6s",
-      mode: "全能参考",
-      batch: "1",
-      ...node.settings
-    };
+function getGreatestCommonDivisor(first: number, second: number) {
+  let a = Math.abs(first);
+  let b = Math.abs(second);
+
+  while (b) {
+    const next = b;
+    b = a % b;
+    a = next;
   }
 
-  if (node.kind === "image") {
-    return {
-      ...common,
-      ratio: "9:16",
-      resolution: "1k",
-      camera: "摄影机控制",
-      mode: "全景图",
-      batch: "1",
-      ...node.settings
-    };
-  }
+  return a || 1;
+}
 
+function getAspectRatioLabel(width: number, height: number) {
+  const divisor = getGreatestCommonDivisor(width, height);
+  return `${Math.round(width / divisor)}:${Math.round(height / divisor)}`;
+}
+
+function getScaledCanvasSize(width: number, height: number, maxEdge = 720) {
+  const scale = Math.min(1, maxEdge / Math.max(width, height));
   return {
-    ...common,
-    mode: "素材库",
-    batch: "1",
-    ...node.settings
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale))
   };
 }
 
-function getGenerationCost(node: CanvasNode) {
-  if (node.kind === "video") return node.cost === "0 credits" || node.cost === "待估算" ? "24 credits" : node.cost;
-  if (node.kind === "image") return node.cost === "0 credits" ? "8 credits" : node.cost;
-  if (node.kind === "upload") return "0 credits";
-  return node.cost;
+function captureVideoPoster(video: HTMLVideoElement) {
+  const width = video.videoWidth;
+  const height = video.videoHeight;
+  if (!width || !height) return undefined;
+
+  const canvas = document.createElement("canvas");
+  const scaledSize = getScaledCanvasSize(width, height);
+  canvas.width = scaledSize.width;
+  canvas.height = scaledSize.height;
+  const context = canvas.getContext("2d");
+  if (!context) return undefined;
+
+  context.drawImage(video, 0, 0, scaledSize.width, scaledSize.height);
+  return canvas.toDataURL("image/jpeg", 0.82);
 }
 
-function getReferenceKindLabel(kind: CanvasNodeKind, index: number) {
-  if (kind === "image" || kind === "upload") return `图片${index + 1}`;
-  if (kind === "video") return `视频${index + 1}`;
-  return `文本${index + 1}`;
+function readImageMetadata(dataUrl: string): Promise<UploadedMediaMetadata> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.addEventListener("load", () => {
+      const width = image.naturalWidth;
+      const height = image.naturalHeight;
+      resolve({
+        width,
+        height,
+        aspectRatio: width && height ? getAspectRatioLabel(width, height) : undefined
+      });
+    }, { once: true });
+    image.addEventListener("error", () => resolve({}), { once: true });
+    image.src = dataUrl;
+  });
 }
 
-function getReferenceIcon(kind: CanvasNodeKind) {
-  if (kind === "video") return <Video size={14} />;
-  if (kind === "image" || kind === "upload") return <ImageIcon size={14} />;
-  return <FileText size={14} />;
+function readVideoMetadata(dataUrl: string): Promise<UploadedMediaMetadata> {
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    let resolved = false;
+    const timeoutId = window.setTimeout(() => resolveOnce(false), 3000);
+
+    function resolveOnce(includePoster: boolean) {
+      if (resolved) return;
+      resolved = true;
+      window.clearTimeout(timeoutId);
+
+      const width = video.videoWidth;
+      const height = video.videoHeight;
+      const posterDataUrl = includePoster ? captureVideoPoster(video) : undefined;
+      video.removeAttribute("src");
+      video.load();
+
+      resolve({
+        width: width || undefined,
+        height: height || undefined,
+        aspectRatio: width && height ? getAspectRatioLabel(width, height) : undefined,
+        posterDataUrl
+      });
+    }
+
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "metadata";
+    video.addEventListener("loadedmetadata", () => {
+      const seekTime = Number.isFinite(video.duration) && video.duration > 0
+        ? Math.min(Math.max(0.6, video.duration * 0.16), 2.4, Math.max(0, video.duration - 0.08))
+        : 0;
+      try {
+        video.currentTime = seekTime;
+      } catch {
+        resolveOnce(false);
+      }
+    }, { once: true });
+    video.addEventListener("seeked", () => resolveOnce(true), { once: true });
+    video.addEventListener("loadeddata", () => {
+      if (!Number.isFinite(video.duration) || video.duration <= 0) resolveOnce(true);
+    }, { once: true });
+    video.addEventListener("error", () => resolveOnce(false), { once: true });
+    video.src = dataUrl;
+    video.load();
+  });
 }
 
-function ReferencePicker({
-  availableRefs,
-  onPick
-}: {
-  availableRefs: CanvasNode[];
-  onPick: (nodeId: string) => void;
-}) {
-  return (
-    <div className="ad-panel-ref-picker">
-      {availableRefs.length ? (
-        availableRefs.map((ref) => (
-          <button key={ref.id} type="button" onClick={() => onPick(ref.id)}>
-            <span className={`ad-panel-ref-thumb ad-node-preview--${ref.previewClass}`}>{getReferenceIcon(ref.kind)}</span>
-            <strong>{ref.title}</strong>
-            <small>{ref.type}</small>
-          </button>
-        ))
-      ) : (
-        <span>没有可添加的上游节点</span>
-      )}
-    </div>
-  );
+function readUploadedMediaMetadata(dataUrl: string, mediaKind: "image" | "video" | "file"): Promise<UploadedMediaMetadata> {
+  if (mediaKind === "image") return readImageMetadata(dataUrl);
+  if (mediaKind === "video") return readVideoMetadata(dataUrl);
+  return Promise.resolve({});
 }
 
-function InputReferenceStrip({
+function getMetadataSettings(metadata: UploadedMediaMetadata): CanvasNodeSettings {
+  return {
+    ...(metadata.width ? { uploadedMediaWidth: String(metadata.width) } : {}),
+    ...(metadata.height ? { uploadedMediaHeight: String(metadata.height) } : {}),
+    ...(metadata.aspectRatio ? { uploadedMediaAspectRatio: metadata.aspectRatio } : {})
+  };
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("无法读取上传文件。"));
+    });
+    reader.addEventListener("error", () => reject(new Error("无法读取上传文件。")));
+    reader.readAsDataURL(file);
+  });
+}
+
+function UploadNodePanel({
   node,
-  parentRefs,
-  availableRefs,
-  onAddRef,
-  onRemoveRef
+  onUpdateNodeSettings
 }: {
   node: CanvasNode;
-  parentRefs: AdCanvasNodeData["parentRefs"];
-  availableRefs: CanvasNode[];
-  onAddRef: (nodeId: string) => void;
-  onRemoveRef: (nodeId: string) => void;
+  onUpdateNodeSettings: CanvasNodeEditorPopoverProps["onUpdateNodeSettings"];
 }) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-
-  return (
-    <div className="ad-panel-ref-zone">
-      <div className="ad-panel-ref-row">
-        <button
-          className="ad-panel-add-ref"
-          type="button"
-          onClick={() => setPickerOpen((value) => !value)}
-          disabled={node.locked || node.status === "locked"}
-        >
-          <span>+</span>
-          添加
-        </button>
-        {parentRefs.map((ref, index) => (
-          <div className={`ad-panel-ref-chip ${node.status === "stale" ? "is-stale" : ""}`} key={ref.id}>
-            <span className={`ad-panel-ref-thumb ad-node-preview--${ref.previewClass}`}>{getReferenceIcon(ref.kind)}</span>
-            <strong>{getReferenceKindLabel(ref.kind, index)}</strong>
-            <small>{node.status === "stale" ? "输入已更新" : ref.title}</small>
-            <button type="button" aria-label="Remove reference" onClick={() => onRemoveRef(ref.id)}>
-              ×
-            </button>
-          </div>
-        ))}
-      </div>
-      {pickerOpen ? (
-        <ReferencePicker
-          availableRefs={availableRefs}
-          onPick={(nodeId) => {
-            onAddRef(nodeId);
-            setPickerOpen(false);
-          }}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function InlineReferenceText({ parentRefs }: { parentRefs: AdCanvasNodeData["parentRefs"] }) {
-  if (!parentRefs.length) return null;
-
-  return (
-    <div className="ad-panel-inline-refs">
-      {parentRefs.slice(0, 4).map((ref, index) => (
-        <span key={ref.id}>@{getReferenceKindLabel(ref.kind, index)}</span>
-      ))}
-    </div>
-  );
-}
-
-function PanelTabs({
-  kind,
-  mode,
-  onModeChange,
-  disabled
-}: {
-  kind: CanvasNodeKind;
-  mode: string;
-  onModeChange: (value: string) => void;
-  disabled: boolean;
-}) {
-  if (kind !== "video") return null;
-
-  return (
-    <div className="ad-panel-tabs">
-      {["全能参考", "首尾帧", "图片参考"].map((tab) => (
-        <button
-          key={tab}
-          type="button"
-          className={mode === tab ? "is-active" : ""}
-          disabled={disabled}
-          onClick={() => onModeChange(tab)}
-        >
-          {tab}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function ControlSelect({
-  label,
-  value,
-  options,
-  disabled,
-  onChange
-}: {
-  label: string;
-  value: string;
-  options: string[];
-  disabled: boolean;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="ad-panel-select">
-      <span>{label}</span>
-      <select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
-        {options.map((option) => (
-          <option key={option}>{option}</option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function MediaControls({
-  node,
-  model,
-  settings,
-  isLocked,
-  isRunning,
-  onModelChange,
-  onSettingChange,
-  onSave,
-  onGenerate,
-  onLock,
-  onUploadClick
-}: {
-  node: CanvasNode;
-  model: string;
-  settings: CanvasNodeSettings;
-  isLocked: boolean;
-  isRunning: boolean;
-  onModelChange: (value: string) => void;
-  onSettingChange: (key: keyof CanvasNodeSettings, value: string) => void;
-  onSave: () => void;
-  onGenerate: () => void;
-  onLock: () => void;
-  onUploadClick: () => void;
-}) {
-  const modelOptions = Array.from(new Set([model, ...getModelOptions(node.kind)]));
-
-  return (
-    <footer className="ad-panel-controls">
-      <label className="ad-panel-select ad-panel-model-select">
-        <WandSparkles size={13} />
-        <select value={model} disabled={isLocked} onChange={(event) => onModelChange(event.target.value)}>
-          {modelOptions.map((option) => (
-            <option key={option}>{option}</option>
-          ))}
-        </select>
-      </label>
-      {node.kind === "video" ? (
-        <>
-          <ControlSelect
-            label="清晰度"
-            value={settings.resolution ?? "720p"}
-            options={videoResolutionOptions}
-            disabled={isLocked}
-            onChange={(value) => onSettingChange("resolution", value)}
-          />
-          <ControlSelect
-            label="时长"
-            value={settings.duration ?? "6s"}
-            options={durationOptions}
-            disabled={isLocked}
-            onChange={(value) => onSettingChange("duration", value)}
-          />
-          <ControlSelect
-            label="比例"
-            value={settings.ratio ?? "9:16"}
-            options={videoRatioOptions}
-            disabled={isLocked}
-            onChange={(value) => onSettingChange("ratio", value)}
-          />
-        </>
-      ) : null}
-      {node.kind === "image" ? (
-        <>
-          <ControlSelect
-            label="比例"
-            value={settings.ratio ?? "9:16"}
-            options={imageRatioOptions}
-            disabled={isLocked}
-            onChange={(value) => onSettingChange("ratio", value)}
-          />
-          <ControlSelect
-            label="尺寸"
-            value={settings.resolution ?? "1k"}
-            options={imageResolutionOptions}
-            disabled={isLocked}
-            onChange={(value) => onSettingChange("resolution", value)}
-          />
-          <ControlSelect
-            label="镜头"
-            value={settings.camera ?? "摄影机控制"}
-            options={cameraOptions}
-            disabled={isLocked}
-            onChange={(value) => onSettingChange("camera", value)}
-          />
-        </>
-      ) : null}
-      {node.kind === "upload" ? (
-        <button type="button" onClick={onUploadClick} disabled={isLocked}>
-          选择文件
-        </button>
-      ) : null}
-      <ControlSelect
-        label="数量"
-        value={settings.batch ?? "1"}
-        options={batchOptions}
-        disabled={isLocked}
-        onChange={(value) => onSettingChange("batch", value)}
-      />
-      <button type="button" onClick={onSave} disabled={isLocked}>
-        保存
-      </button>
-      <button type="button" onClick={onLock}>
-        {isLocked ? <Lock size={13} /> : <LockOpen size={13} />}
-      </button>
-      <span className="ad-panel-cost">{getGenerationCost(node)}</span>
-      <button className="ad-panel-generate" type="button" onClick={onGenerate} disabled={isLocked || isRunning}>
-        {isRunning ? "生成中" : <ArrowUp size={15} />}
-      </button>
-    </footer>
-  );
-}
-
-export function CanvasNodeEditorPopover(props: CanvasNodeEditorPopoverProps) {
-  const {
-    node,
-    parentRefs,
-    availableRefs,
-    style,
-    onConnectParentRef,
-    onDisconnectParentRef,
-    onLockNode,
-    onRunNode,
-    onUpdateNodeSettings
-  } = props;
-  const [title, setTitle] = useState(node.title);
-  const [model, setModel] = useState(node.model);
-  const [settings, setSettings] = useState<CanvasNodeSettings>(() => getDefaultSettings(node));
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
   const isLocked = node.locked || node.status === "locked";
-  const isRunning = node.status === "running";
 
+  async function handleUpload(file: File) {
+    setUploading(true);
+    setErrorMessage("");
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const mediaKind = getUploadedMediaKind(file);
+      const metadata = await readUploadedMediaMetadata(dataUrl, mediaKind);
+      const assetFields =
+        mediaKind === "file"
+          ? {}
+          : mediaKind === "video"
+            ? {
+                assetUrl: metadata.posterDataUrl ?? dataUrl,
+                downloadUrl: dataUrl
+              }
+          : {
+              assetUrl: dataUrl,
+              downloadUrl: dataUrl
+            };
+      const settings = {
+        ...node.settings,
+        ...assetFields,
+        ...getMetadataSettings(metadata),
+        uploadedFileName: file.name,
+        uploadedFileMime: file.type || "application/octet-stream",
+        uploadedFileSize: String(file.size),
+        uploadedMediaKind: mediaKind,
+        prompt: node.settings?.prompt || `上传素材：${file.name}`
+      };
+      onUpdateNodeSettings(node.id, node.title, `上传素材：${file.name}`, node.model, settings);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "上传失败，请重新选择文件。");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="canvas-upload-panel">
+      <input
+        ref={fileInputRef}
+        className="ad-panel-file-input"
+        type="file"
+        accept="image/*,video/*"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void handleUpload(file);
+          event.currentTarget.value = "";
+        }}
+      />
+      <button type="button" disabled={isLocked || uploading} onClick={() => fileInputRef.current?.click()}>
+        <UploadCloud size={16} />
+        {uploading ? "读取中" : "选择文件"}
+      </button>
+      <p>{node.settings?.uploadedFileName ? `已选择：${node.settings.uploadedFileName}` : "上传节点暂不调用生成模型，只作为下游素材引用。"}</p>
+      {errorMessage ? <p className="canvas-upload-error">{errorMessage}</p> : null}
+    </div>
+  );
+}
+
+export function CanvasNodeEditorPopover({
+  node,
+  parentNodes,
+  style,
+  onDisconnectParentRef,
+  onStartNodeGeneration,
+  onCompleteNodeGeneration,
+  onFailNodeGeneration,
+  onPanelDragStart,
+  onUpdateNodeSettings
+}: CanvasNodeEditorPopoverProps) {
   if (isTextLikeNode(node.kind)) return null;
-
-  function updateSetting(key: keyof CanvasNodeSettings, value: string) {
-    setSettings((current) => ({
-      ...current,
-      [key]: value
-    }));
-  }
-
-  function saveSettings(nextSettings = settings) {
-    onUpdateNodeSettings(node.id, title.trim() || node.title, node.output, model, nextSettings);
-  }
-
-  function generate() {
-    saveSettings();
-    onRunNode(node.id);
-  }
-
-  function handleUpload(fileName: string) {
-    const nextSettings = {
-      ...settings,
-      uploadedFileName: fileName,
-      prompt: settings.prompt || `上传素材：${fileName}`
-    };
-    setSettings(nextSettings);
-    onUpdateNodeSettings(node.id, title.trim() || node.title, `上传素材：${fileName}`, model, nextSettings);
-  }
 
   return (
     <aside
@@ -420,61 +280,25 @@ export function CanvasNodeEditorPopover(props: CanvasNodeEditorPopoverProps) {
       onClick={stopCanvasEvent}
       onDoubleClick={stopCanvasEvent}
       onMouseDown={stopCanvasEvent}
+      onPointerDownCapture={(event) => {
+        if (isPanelDragTarget(event.target)) {
+          onPanelDragStart(event);
+        }
+      }}
       style={style}
     >
-      <PanelTabs
-        kind={node.kind}
-        mode={settings.mode ?? "全能参考"}
-        disabled={isLocked}
-        onModeChange={(value) => updateSetting("mode", value)}
-      />
-      <label className="ad-panel-title-field">
-        <span>节点名称</span>
-        <input value={title} disabled={isLocked} onChange={(event) => setTitle(event.target.value)} />
-      </label>
-      <InputReferenceStrip
-        node={node}
-        parentRefs={parentRefs}
-        availableRefs={availableRefs}
-        onAddRef={(nodeId) => onConnectParentRef(nodeId, node.id)}
-        onRemoveRef={(nodeId) => onDisconnectParentRef(nodeId, node.id)}
-      />
-      <label className="ad-panel-prompt">
-        <span>{node.kind === "upload" ? "素材说明" : "描述你想要生成的内容，使用 @ 引用上游素材"}</span>
-        <InlineReferenceText parentRefs={parentRefs} />
-        <textarea
-          value={settings.prompt ?? ""}
-          rows={node.kind === "video" ? 5 : 3}
-          disabled={isLocked}
-          placeholder="描述你想要生成的内容，使用@可快速引用上传的文件，按/呼出指令"
-          onChange={(event) => updateSetting("prompt", event.target.value)}
+      {node.kind === "image" || node.kind === "video" ? (
+        <CanvasGenerationComposer
+          node={node}
+          parentNodes={parentNodes}
+          onDisconnectParentRef={onDisconnectParentRef}
+          onStart={({ prompt, model, settings }) => onStartNodeGeneration(node.id, prompt, model, settings)}
+          onComplete={(result) => onCompleteNodeGeneration(node.id, result)}
+          onFail={(errorMessage) => onFailNodeGeneration(node.id, errorMessage)}
         />
-      </label>
-      {node.kind === "upload" ? (
-        <input
-          ref={fileInputRef}
-          className="ad-panel-file-input"
-          type="file"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) handleUpload(file.name);
-            event.currentTarget.value = "";
-          }}
-        />
-      ) : null}
-      <MediaControls
-        node={node}
-        model={model}
-        settings={settings}
-        isLocked={isLocked}
-        isRunning={isRunning}
-        onModelChange={setModel}
-        onSettingChange={updateSetting}
-        onSave={() => saveSettings()}
-        onGenerate={generate}
-        onLock={() => onLockNode(node.id)}
-        onUploadClick={() => fileInputRef.current?.click()}
-      />
+      ) : (
+        <UploadNodePanel node={node} onUpdateNodeSettings={onUpdateNodeSettings} />
+      )}
     </aside>
   );
 }

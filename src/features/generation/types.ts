@@ -37,6 +37,7 @@ export type GenerationParamOption = {
 export type GenerationParam = {
   id: string;
   label: string;
+  modelIds?: string[];
   component: GenerationParamComponent;
   visibility: GenerationParamVisibility;
   required: boolean;
@@ -113,10 +114,13 @@ export type GenerationTask = {
   credits: number;
   createdAt: string;
   durationLabel?: string;
+  providerTaskId?: string;
+  errorMessage?: string;
   output: {
     kind: GenerationKind;
     title: string;
     assetUrl?: string;
+    downloadUrl?: string;
     ratio?: string;
   };
   context?: {
@@ -147,5 +151,7 @@ export type SingleGenerationState = {
   slots: GenerationSlotInput[];
   history: GenerationTask[];
 };
+
+export type GenerationDraft = Pick<SingleGenerationState, "prompt" | "modelId" | "modeKey" | "paramValues" | "slots">;
 
 export type GenerationState = Record<GenerationKind, SingleGenerationState>;

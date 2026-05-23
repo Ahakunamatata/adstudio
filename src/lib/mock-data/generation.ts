@@ -9,8 +9,7 @@ import type {
   GenerationSlot,
   GenerationSlotKey,
   GenerationSlotInput,
-  GenerationState,
-  GenerationTask
+  GenerationState
 } from "@/features/generation/types";
 
 const videoModes: GenerationMode[] = [
@@ -62,20 +61,20 @@ const imageModes: GenerationMode[] = [
     kind: "image",
     label: "文生图",
     shortLabel: "Text",
-    description: "用 prompt 生成广告图，可选绑定产品、人物和风格参考。",
+    description: "用 prompt 生成广告图，可选上传参考图数组。",
     allowPromptOnly: true,
-    slotKeys: ["product_image", "person_image", "style_reference"],
-    paramIds: ["ratio", "count", "style", "quality", "seed", "internal_source"]
+    slotKeys: ["reference_image"],
+    paramIds: ["ratio", "resolution", "seed", "internal_source"]
   },
   {
     key: "image-reference",
     kind: "image",
     label: "参考生图",
     shortLabel: "Ref",
-    description: "用产品图、人物图或风格图生成可投放广告图片。",
+    description: "用参考图数组生成可投放广告图片。",
     allowPromptOnly: false,
-    slotKeys: ["product_image", "person_image", "style_reference"],
-    paramIds: ["ratio", "count", "style", "quality", "seed", "internal_source"]
+    slotKeys: ["reference_image"],
+    paramIds: ["ratio", "resolution", "seed", "internal_source"]
   }
 ];
 
@@ -86,7 +85,7 @@ const videoSlots: GenerationSlot[] = [
     label: "参考图",
     shortLabel: "Ref",
     min: 0,
-    max: 4,
+    max: 6,
     description: "人物、场景、构图或广告风格参考图。"
   },
   {
@@ -122,38 +121,20 @@ const videoSlots: GenerationSlot[] = [
     label: "产品图",
     shortLabel: "Product",
     min: 0,
-    max: 3,
+    max: 6,
     description: "商品、App UI、Logo 或包装图，帮助保持品牌一致。"
   }
 ];
 
 const imageSlots: GenerationSlot[] = [
   {
-    key: "product_image",
+    key: "reference_image",
     kind: "image",
-    label: "产品图",
-    shortLabel: "Product",
+    label: "参考图",
+    shortLabel: "Ref",
     min: 0,
-    max: 4,
-    description: "商品包装、App 截图或品牌素材。"
-  },
-  {
-    key: "person_image",
-    kind: "image",
-    label: "人物图",
-    shortLabel: "Person",
-    min: 0,
-    max: 2,
-    description: "创作者、模特或目标用户参考。"
-  },
-  {
-    key: "style_reference",
-    kind: "image",
-    label: "风格图",
-    shortLabel: "Style",
-    min: 0,
-    max: 3,
-    description: "广告构图、色彩、质感或竞品视觉参考。"
+    max: 7,
+    description: "传给 Vidu reference2image 的 images 数组，可放产品、人物、风格或 App 截图。"
   }
 ];
 
@@ -179,10 +160,10 @@ const videoParams: GenerationParam[] = [
     required: true,
     defaultValue: "15s",
     options: [
+      { label: "5s", value: "5s" },
       { label: "6s", value: "6s" },
       { label: "10s", value: "10s" },
-      { label: "15s", value: "15s" },
-      { label: "30s", value: "30s" }
+      { label: "15s", value: "15s" }
     ]
   },
   {
@@ -193,9 +174,9 @@ const videoParams: GenerationParam[] = [
     required: true,
     defaultValue: "1080p",
     options: [
+      { label: "540p", value: "540p" },
       { label: "720p", value: "720p" },
-      { label: "1080p", value: "1080p" },
-      { label: "4K", value: "4K" }
+      { label: "1080p", value: "1080p" }
     ]
   },
   {
@@ -250,55 +231,51 @@ const imageParams: GenerationParam[] = [
   {
     id: "ratio",
     label: "比例",
+    modelIds: ["viduq2"],
     component: "select",
     visibility: "basic",
     required: true,
-    defaultValue: "4:5",
+    defaultValue: "3:4",
     options: [
       { label: "1:1", value: "1:1" },
-      { label: "4:5", value: "4:5" },
+      { label: "3:4", value: "3:4" },
+      { label: "4:3", value: "4:3" },
+      { label: "9:16", value: "9:16" },
+      { label: "16:9", value: "16:9" },
+      { label: "21:9", value: "21:9" },
+      { label: "2:3", value: "2:3" },
+      { label: "3:2", value: "3:2" },
+      { label: "Auto", value: "auto" }
+    ]
+  },
+  {
+    id: "ratio",
+    label: "比例",
+    modelIds: ["viduq1"],
+    component: "select",
+    visibility: "basic",
+    required: true,
+    defaultValue: "1:1",
+    options: [
+      { label: "1:1", value: "1:1" },
+      { label: "3:4", value: "3:4" },
+      { label: "4:3", value: "4:3" },
       { label: "9:16", value: "9:16" },
       { label: "16:9", value: "16:9" }
     ]
   },
   {
-    id: "count",
-    label: "张数",
+    id: "resolution",
+    label: "分辨率",
+    modelIds: ["viduq2"],
     component: "select",
     visibility: "basic",
     required: true,
-    defaultValue: 4,
+    defaultValue: "1080p",
     options: [
-      { label: "1 张", value: 1 },
-      { label: "2 张", value: 2 },
-      { label: "4 张", value: 4 }
-    ]
-  },
-  {
-    id: "style",
-    label: "风格",
-    component: "select",
-    visibility: "basic",
-    required: false,
-    defaultValue: "ugc",
-    options: [
-      { label: "UGC", value: "ugc" },
-      { label: "商品主图", value: "packshot" },
-      { label: "App 素材", value: "app" },
-      { label: "高端质感", value: "premium" }
-    ]
-  },
-  {
-    id: "quality",
-    label: "质量",
-    component: "select",
-    visibility: "basic",
-    required: true,
-    defaultValue: "standard",
-    options: [
-      { label: "Standard", value: "standard" },
-      { label: "High", value: "high" },
-      { label: "Ultra", value: "ultra" }
+      { label: "1080p", value: "1080p" },
+      { label: "2K", value: "2K" },
+      { label: "4K", value: "4K" }
     ]
   },
   {
@@ -324,11 +301,11 @@ const imageParams: GenerationParam[] = [
 
 const videoModels: GenerationModel[] = [
   {
-    id: "seedance-2",
+    id: "viduq3-turbo",
     kind: "video",
-    displayName: "Seedance 2.0",
-    provider: "ByteDance",
-    description: "适合移动端广告、UGC 镜头、产品演示和首尾帧控制。",
+    displayName: "Vidu Q3 Turbo",
+    provider: "Vidu",
+    description: "Vidu Q3 快速视频模型，优先用于文生视频、图生视频、首尾帧和参考生视频流程跑通。",
     defaultForKind: true,
     defaultModeKey: "text-to-video",
     modeKeys: ["text-to-video", "image-to-video", "first-last-frame", "reference"],
@@ -336,8 +313,8 @@ const videoModels: GenerationModel[] = [
     paramIds: ["ratio", "duration", "quality", "motion", "camera", "seed", "internal_source"],
     defaults: {
       ratio: "9:16",
-      duration: "15s",
-      quality: "1080p",
+      duration: "5s",
+      quality: "720p",
       motion: "balanced",
       camera: "handheld",
       internal_source: "standalone"
@@ -345,60 +322,34 @@ const videoModels: GenerationModel[] = [
     credits: {
       base: 18,
       multipliers: {
-        duration: { "6s": 0.75, "10s": 0.9, "15s": 1, "30s": 1.7 },
-        quality: { "720p": 0.85, "1080p": 1, "4K": 1.8 }
+        duration: { "5s": 0.75, "6s": 0.8, "10s": 1, "15s": 1.45 },
+        quality: { "540p": 0.8, "720p": 1, "1080p": 1.35 }
       }
     }
   },
   {
-    id: "kling-3",
+    id: "viduq3-pro",
     kind: "video",
-    displayName: "Kling 3.0",
-    provider: "Kuaishou",
-    description: "适合强动态商品演示、多镜头广告和高控制首尾帧。",
-    defaultModeKey: "image-to-video",
-    modeKeys: ["text-to-video", "image-to-video", "first-last-frame"],
-    slotKeys: ["start_frame", "end_frame", "product_image"],
+    displayName: "Vidu Q3 Pro",
+    provider: "Vidu",
+    description: "Vidu Q3 高质量视频模型，适合需要更稳定质感的广告短片。",
+    defaultModeKey: "text-to-video",
+    modeKeys: ["text-to-video", "image-to-video", "first-last-frame", "reference"],
+    slotKeys: ["reference_image", "reference_video", "start_frame", "end_frame", "product_image"],
     paramIds: ["ratio", "duration", "quality", "motion", "camera", "seed", "internal_source"],
     defaults: {
       ratio: "9:16",
       duration: "10s",
       quality: "1080p",
-      motion: "high",
-      camera: "push-in",
+      motion: "balanced",
+      camera: "handheld",
       internal_source: "standalone"
     },
     credits: {
-      base: 22,
+      base: 24,
       multipliers: {
-        duration: { "6s": 0.72, "10s": 1, "15s": 1.35, "30s": 2 },
-        quality: { "720p": 0.8, "1080p": 1, "4K": 1.9 }
-      }
-    }
-  },
-  {
-    id: "veo",
-    kind: "video",
-    displayName: "Veo",
-    provider: "Google",
-    description: "适合高质感品牌短片、真实光影和干净的产品叙事。",
-    defaultModeKey: "text-to-video",
-    modeKeys: ["text-to-video", "image-to-video", "first-last-frame", "reference"],
-    slotKeys: ["reference_image", "start_frame", "end_frame", "product_image"],
-    paramIds: ["ratio", "duration", "quality", "motion", "camera", "seed", "internal_source"],
-    defaults: {
-      ratio: "16:9",
-      duration: "10s",
-      quality: "1080p",
-      motion: "low",
-      camera: "static",
-      internal_source: "standalone"
-    },
-    credits: {
-      base: 30,
-      multipliers: {
-        duration: { "6s": 0.8, "10s": 1, "15s": 1.45, "30s": 2.25 },
-        quality: { "720p": 0.75, "1080p": 1, "4K": 2.2 }
+        duration: { "5s": 0.7, "6s": 0.78, "10s": 1, "15s": 1.4 },
+        quality: { "540p": 0.75, "720p": 0.95, "1080p": 1.25 }
       }
     }
   }
@@ -406,79 +357,45 @@ const videoModels: GenerationModel[] = [
 
 const imageModels: GenerationModel[] = [
   {
-    id: "gpt-image",
+    id: "viduq2",
     kind: "image",
-    displayName: "GPT Image",
-    provider: "OpenAI",
-    description: "适合广告构图、文案区域规划、产品视觉和多参考图编辑。",
+    displayName: "Vidu Q2 Image",
+    provider: "Vidu",
+    description: "Vidu Q2 图片模型，支持文生图、参考生图和图片编辑。",
     defaultForKind: true,
     defaultModeKey: "text-to-image",
     modeKeys: ["text-to-image", "image-reference"],
-    slotKeys: ["product_image", "person_image", "style_reference"],
-    paramIds: ["ratio", "count", "style", "quality", "seed", "internal_source"],
+    slotKeys: ["reference_image"],
+    paramIds: ["ratio", "resolution", "seed", "internal_source"],
     defaults: {
-      ratio: "4:5",
-      count: 4,
-      style: "ugc",
-      quality: "high",
+      ratio: "3:4",
+      resolution: "1080p",
       internal_source: "standalone"
     },
     credits: {
       base: 8,
       multipliers: {
-        count: { "1": 0.45, "2": 0.7, "4": 1 },
-        quality: { standard: 0.85, high: 1, ultra: 1.45 }
+        resolution: { "1080p": 1, "2K": 1.25, "4K": 1.75 }
       }
     }
   },
   {
-    id: "nano-banana",
+    id: "viduq1",
     kind: "image",
-    displayName: "Nano Banana",
-    provider: "Google",
-    description: "适合快速变体、产品图改造和多参考资产融合。",
+    displayName: "Vidu Q1 Image",
+    provider: "Vidu",
+    description: "Vidu Q1 图片模型，保留为参考生图备用通道。",
     defaultModeKey: "image-reference",
-    modeKeys: ["text-to-image", "image-reference"],
-    slotKeys: ["product_image", "person_image", "style_reference"],
-    paramIds: ["ratio", "count", "style", "quality", "seed", "internal_source"],
+    modeKeys: ["image-reference"],
+    slotKeys: ["reference_image"],
+    paramIds: ["ratio", "seed", "internal_source"],
     defaults: {
       ratio: "1:1",
-      count: 2,
-      style: "packshot",
-      quality: "standard",
       internal_source: "standalone"
     },
     credits: {
       base: 7,
-      multipliers: {
-        count: { "1": 0.5, "2": 0.75, "4": 1.2 },
-        quality: { standard: 1, high: 1.25, ultra: 1.65 }
-      }
-    }
-  },
-  {
-    id: "flux",
-    kind: "image",
-    displayName: "Flux",
-    provider: "Black Forest Labs",
-    description: "适合高质感静帧、海报式广告图和风格化素材。",
-    defaultModeKey: "text-to-image",
-    modeKeys: ["text-to-image", "image-reference"],
-    slotKeys: ["product_image", "style_reference"],
-    paramIds: ["ratio", "count", "style", "quality", "seed", "internal_source"],
-    defaults: {
-      ratio: "16:9",
-      count: 2,
-      style: "premium",
-      quality: "high",
-      internal_source: "standalone"
-    },
-    credits: {
-      base: 9,
-      multipliers: {
-        count: { "1": 0.5, "2": 0.85, "4": 1.35 },
-        quality: { standard: 0.8, high: 1, ultra: 1.55 }
-      }
+      multipliers: {}
     }
   }
 ];
@@ -499,117 +416,6 @@ export function createMockGenerationSlotInput(kind: GenerationKind, slotKey: Gen
   };
 }
 
-function taskSlots(kind: GenerationKind, keys: GenerationSlotKey[]): GenerationSlotInput[] {
-  return keys.flatMap((slotKey, index) => {
-    const slot = createMockGenerationSlotInput(kind, slotKey, index);
-    return slot ? [slot] : [];
-  });
-}
-
-const videoTasks: GenerationTask[] = [
-  {
-    id: "mock-video-001",
-    kind: "video",
-    surface: "standalone",
-    prompt:
-      "15s TikTok ad for Family Locator. A parent sees a late arrival alert, checks the app, then feels relieved. Thai subtitles, handheld phone close-ups, clear CTA.",
-    modelId: "seedance-2",
-    modelName: "Seedance 2.0",
-    modeKey: "text-to-video",
-    modeLabel: "文生视频",
-    params: { ratio: "9:16", duration: "15s", quality: "1080p", motion: "balanced", camera: "handheld" },
-    slots: taskSlots("video", ["product_image"]),
-    status: "succeeded",
-    progress: 100,
-    credits: 18,
-    createdAt: "Today 10:42",
-    durationLabel: "31s",
-    output: {
-      kind: "video",
-      title: "Family Locator alert ad",
-      assetUrl: "/assets/preview-video-ugc.png",
-      ratio: "9:16"
-    },
-    context: { surface: "standalone" }
-  },
-  {
-    id: "mock-video-002",
-    kind: "video",
-    surface: "canvas",
-    prompt:
-      "Product demo shot: phone screen opens the app, route card animates in, parent taps notify. Clean UI, warm home light, product-led motion.",
-    modelId: "kling-3",
-    modelName: "Kling 3.0",
-    modeKey: "first-last-frame",
-    modeLabel: "首尾帧",
-    params: { ratio: "9:16", duration: "10s", quality: "1080p", motion: "high", camera: "push-in" },
-    slots: taskSlots("video", ["start_frame", "end_frame", "product_image"]),
-    status: "running",
-    progress: 62,
-    credits: 22,
-    createdAt: "Today 10:57",
-    output: {
-      kind: "video",
-      title: "App UI transition",
-      assetUrl: "/assets/asset-competitor-video.png",
-      ratio: "9:16"
-    },
-    context: { surface: "canvas", nodeId: "video_node_12" }
-  }
-];
-
-const imageTasks: GenerationTask[] = [
-  {
-    id: "mock-image-001",
-    kind: "image",
-    surface: "standalone",
-    prompt:
-      "High-converting 4:5 app ad image for Family Locator. Phone UI hero, worried parent visual, clean headline space, green CTA button.",
-    modelId: "gpt-image",
-    modelName: "GPT Image",
-    modeKey: "text-to-image",
-    modeLabel: "文生图",
-    params: { ratio: "4:5", count: 4, style: "ugc", quality: "high" },
-    slots: taskSlots("image", ["product_image", "person_image"]),
-    status: "succeeded",
-    progress: 100,
-    credits: 8,
-    createdAt: "Today 09:28",
-    durationLabel: "12s",
-    output: {
-      kind: "image",
-      title: "Family Locator static ad",
-      assetUrl: "/assets/preview-image-ad.png",
-      ratio: "4:5"
-    },
-    context: { surface: "standalone" }
-  },
-  {
-    id: "mock-image-002",
-    kind: "image",
-    surface: "canvas",
-    prompt:
-      "Premium ecommerce packshot with offer badge, soft studio light, product centered, space for campaign headline.",
-    modelId: "nano-banana",
-    modelName: "Nano Banana",
-    modeKey: "image-reference",
-    modeLabel: "参考生图",
-    params: { ratio: "1:1", count: 2, style: "packshot", quality: "standard" },
-    slots: taskSlots("image", ["product_image", "style_reference"]),
-    status: "queued",
-    progress: 8,
-    credits: 6,
-    createdAt: "Today 11:03",
-    output: {
-      kind: "image",
-      title: "Packshot variation",
-      assetUrl: "/assets/thumb-ecommerce-packshot.png",
-      ratio: "1:1"
-    },
-    context: { surface: "canvas", nodeId: "image_node_07" }
-  }
-];
-
 export const generationDefaults: Record<GenerationKind, GenerationCatalog> = {
   video: {
     kind: "video",
@@ -621,7 +427,7 @@ export const generationDefaults: Record<GenerationKind, GenerationCatalog> = {
     modes: videoModes,
     slots: videoSlots,
     params: videoParams,
-    mockTasks: videoTasks
+    mockTasks: []
   },
   image: {
     kind: "image",
@@ -633,7 +439,7 @@ export const generationDefaults: Record<GenerationKind, GenerationCatalog> = {
     modes: imageModes,
     slots: imageSlots,
     params: imageParams,
-    mockTasks: imageTasks
+    mockTasks: []
   }
 };
 
@@ -652,10 +458,14 @@ export function getGenerationMode(kind: GenerationKind, modeKey: GenerationModeK
   return catalog.modes.find((mode) => mode.key === modeKey) ?? catalog.modes.find((mode) => mode.key === model.defaultModeKey) ?? catalog.modes[0];
 }
 
+function paramMatchesModel(param: GenerationParam, model: GenerationModel) {
+  return !param.modelIds?.length || param.modelIds.includes(model.id);
+}
+
 export function getDefaultGenerationParamValues(model: GenerationModel) {
   const values: Record<string, GenerationParamValue> = { ...model.defaults };
   for (const paramId of model.paramIds) {
-    const param = [...videoParams, ...imageParams].find((item) => item.id === paramId);
+    const param = [...videoParams, ...imageParams].find((item) => item.id === paramId && paramMatchesModel(item, model));
     if (param?.defaultValue !== undefined && values[paramId] === undefined) {
       values[paramId] = param.defaultValue;
     }
@@ -674,7 +484,7 @@ export function getActiveGenerationParams(kind: GenerationKind, modelId: string,
   const catalog = generationDefaults[kind];
   const model = getGenerationModel(kind, modelId);
   const mode = getGenerationMode(kind, modeKey);
-  return catalog.params.filter((param) => model.paramIds.includes(param.id) && mode.paramIds.includes(param.id));
+  return catalog.params.filter((param) => model.paramIds.includes(param.id) && mode.paramIds.includes(param.id) && paramMatchesModel(param, model));
 }
 
 export function estimateGenerationCredits(kind: GenerationKind, modelId: string, paramValues: Record<string, GenerationParamValue>) {
@@ -703,7 +513,7 @@ export function createInitialGenerationState(): GenerationState {
       modeKey: videoModel.defaultModeKey,
       paramValues: getDefaultGenerationParamValues(videoModel),
       slots: [],
-      history: generationDefaults.video.mockTasks
+      history: []
     },
     image: {
       prompt: "",
@@ -711,7 +521,7 @@ export function createInitialGenerationState(): GenerationState {
       modeKey: imageModel.defaultModeKey,
       paramValues: getDefaultGenerationParamValues(imageModel),
       slots: [],
-      history: generationDefaults.image.mockTasks
+      history: []
     }
   };
 }

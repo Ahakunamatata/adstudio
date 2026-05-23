@@ -26,12 +26,14 @@ export function AppShell({
   onCloseDrawer,
   children
 }: AppShellProps) {
+  const workspaceClassName = route === "workbench" ? "workspace is-workbench" : "workspace";
+
   return (
     <>
       <div className="app-shell">
         <RailNav route={route} onRouteChange={onRouteChange} />
-        <main className="workspace">
-          <Topbar route={route} />
+        <main className={workspaceClassName}>
+          {route !== "workbench" ? <Topbar route={route} /> : null}
           {children}
         </main>
       </div>

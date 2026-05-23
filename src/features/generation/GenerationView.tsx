@@ -10,12 +10,12 @@ import {
   Image as ImageIcon,
   Layers3,
   Play,
-  SlidersHorizontal,
   Sparkles,
+  Upload,
   Video,
   X
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent } from "react";
 import type { AppRoute } from "@/lib/domain/schemas";
 import {
   estimateGenerationCredits,
@@ -38,6 +38,29 @@ import type {
   GenerationTaskStatus,
   SingleGenerationState
 } from "./types";
+import { GenerationImageMentionMenu, type GenerationMentionMenuState } from "./GenerationImageMentionMenu";
+import { GenerationSlotStack } from "./GenerationSlotStack";
+import {
+  assignFilesToGenerationSlots,
+  createGenerationSlotInputFromFile,
+  filterGenerationSlots,
+  getGenerationMentionAssets,
+  getGenerationMentionPromptPosition,
+  hasMediaDataTransfer,
+  revokeGenerationSlotPreview,
+  type GenerationMentionAsset
+} from "./slot-inputs";
+import {
+  buildViduSlotPayloads,
+  getElapsedLabel,
+  getErrorMessage,
+  getViduOutput,
+  getViduProgress,
+  mapViduState,
+  readApiError,
+  type ViduGenerateResponse,
+  type ViduTaskResponse
+} from "./vidu-client";
 
 type GenerationStateUpdater = SingleGenerationState | ((current: SingleGenerationState) => SingleGenerationState);
 
@@ -45,6 +68,8 @@ type GenerationPreviewItem = {
   kind: GenerationAssetKind | "text";
   title: string;
   src?: string;
+  posterSrc?: string;
+  playbackSrc?: string;
   text?: string;
 };
 
@@ -52,9 +77,11 @@ type GenerationViewProps = {
   active: boolean;
   kind: GenerationKind;
   state: SingleGenerationState;
+  autoSubmitToken?: number | null;
   onStateChange: (kind: GenerationKind, state: GenerationStateUpdater) => void;
   onRouteChange: (route: AppRoute) => void;
   onToast: (text: string) => void;
+  onAutoSubmitHandled?: (kind: GenerationKind, token: number) => void;
 };
 
 const statusCopy: Record<GenerationTaskStatus, string> = {
@@ -77,14 +104,6 @@ function getParamDisplayValue(param: GenerationParam, value: GenerationParamValu
   return String(value);
 }
 
-function mergeModelDefaults(currentValues: Record<string, GenerationParamValue>, modelId: string, kind: GenerationKind) {
-  const model = getGenerationModel(kind, modelId);
-  return {
-    ...getDefaultGenerationParamValues(model),
-    ...currentValues
-  };
-}
-
 function updateTask(state: SingleGenerationState, taskId: string, patch: Partial<GenerationTask>) {
   return {
     ...state,
@@ -92,27 +111,7 @@ function updateTask(state: SingleGenerationState, taskId: string, patch: Partial
   };
 }
 
-function getSlotPreview(slot: GenerationSlot) {
-  if (slot.kind === "video") return "/assets/asset-competitor-video.png";
-  if (slot.key === "person_image") return "/assets/asset-thai-mother.png";
-  if (slot.key === "style_reference") return "/assets/thumb-ugc-product.png";
-  if (slot.key === "product_image") return "/assets/asset-app-ui.png";
-  return "/assets/asset-storyboard-c1.png";
-}
-
-function createMockSlotInput(slot: GenerationSlot, count: number): GenerationSlotInput {
-  return {
-    id: `${slot.key}-${Date.now()}-${count}`,
-    slotKey: slot.key,
-    kind: slot.kind,
-    label: slot.label,
-    fileName: `${slot.shortLabel.toLowerCase()}-${count + 1}.${slot.kind === "video" ? "mp4" : "png"}`,
-    previewUrl: getSlotPreview(slot),
-    status: "uploaded"
-  };
-}
-
-function createMockTask({
+function createPendingTask({
   activeSlots,
   credits,
   kind,
@@ -157,7 +156,6 @@ function createMockTask({
     output: {
       kind,
       title: `${taskKindLabel} draft`,
-      assetUrl: kind === "video" ? "/assets/preview-video-ugc.png" : "/assets/preview-image-ad.png",
       ratio
     },
     context: {
@@ -177,12 +175,28 @@ function getSlotPreviewItem(slot: GenerationSlotInput): GenerationPreviewItem | 
 }
 
 function getTaskOutputPreviewItem(task: GenerationTask): GenerationPreviewItem | null {
-  if (!task.output.assetUrl || task.status !== "succeeded") return null;
+  if (task.status !== "succeeded") return null;
+
+  if (task.kind === "video") {
+    const playbackSrc = task.output.downloadUrl ?? task.output.assetUrl;
+    if (!task.output.assetUrl && !playbackSrc) return null;
+
+    return {
+      kind: task.output.kind,
+      src: task.output.assetUrl,
+      playbackSrc,
+      posterSrc: task.output.assetUrl,
+      title: task.output.title || "Video output"
+    };
+  }
+
+  const imageSrc = task.output.assetUrl ?? task.output.downloadUrl;
+  if (!imageSrc) return null;
 
   return {
     kind: task.output.kind,
-    src: task.output.assetUrl,
-    title: task.output.title || `${task.kind === "video" ? "Video" : "Image"} output`
+    src: imageSrc,
+    title: task.output.title || "Image output"
   };
 }
 
@@ -226,6 +240,8 @@ function GenerationPreviewOverlay({ item, onClose }: { item: GenerationPreviewIt
 
   if (!item) return null;
 
+  const videoSrc = item.kind === "video" ? item.playbackSrc ?? item.src : undefined;
+
   return (
     <div
       className="generation-media-preview-overlay open"
@@ -247,7 +263,18 @@ function GenerationPreviewOverlay({ item, onClose }: { item: GenerationPreviewIt
         ) : null}
         {item.kind === "video" ? (
           <div className="generation-media-preview-video">
-            {item.src ? <span className="generation-media-preview-content" style={{ backgroundImage: `url(${item.src})` }} /> : <Video size={28} />}
+            {videoSrc ? (
+              <video
+                src={videoSrc}
+                poster={item.posterSrc ?? item.src}
+                controls
+                autoPlay
+                playsInline
+                style={{ maxHeight: "100%", maxWidth: "100%", borderRadius: 8, background: "#050713" }}
+              />
+            ) : (
+              <Video size={28} />
+            )}
             <span>{item.title}</span>
           </div>
         ) : null}
@@ -402,15 +429,30 @@ function GenerationDetailOverlay({
   );
 }
 
-export function GenerationView({ active, kind, state, onStateChange, onRouteChange, onToast }: GenerationViewProps) {
+export function GenerationView({ active, kind, state, autoSubmitToken = null, onStateChange, onRouteChange, onToast, onAutoSubmitHandled }: GenerationViewProps) {
   const catalog = generationDefaults[kind];
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<GenerationPreviewItem | null>(null);
   const [detailTask, setDetailTask] = useState<GenerationTask | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [mentionMenu, setMentionMenu] = useState<GenerationMentionMenuState>({
+    anchor: "prompt",
+    open: false,
+    position: null
+  });
+  const [isDropActive, setIsDropActive] = useState(false);
+  const [mentionStart, setMentionStart] = useState<number | null>(null);
+  const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
   const bottomScrollFrame = useRef<number | null>(null);
+  const composerRef = useRef<HTMLDivElement | null>(null);
+  const promptRef = useRef<HTMLTextAreaElement | null>(null);
+  const mentionMenuRef = useRef<HTMLDivElement | null>(null);
+  const mentionItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const isCollapsedRef = useRef(false);
   const forceExpandedRef = useRef(false);
+  const pollTimeouts = useRef<number[]>([]);
+  const autoSubmitHandledRef = useRef<number | null>(null);
+  const submitRef = useRef<() => Promise<void>>(async () => undefined);
 
   const selectedModel = getGenerationModel(kind, state.modelId);
   const selectedMode = selectedModel.modeKeys.includes(state.modeKey)
@@ -425,11 +467,12 @@ export function GenerationView({ active, kind, state, onStateChange, onRouteChan
     () => getActiveGenerationParams(kind, selectedModel.id, selectedMode.key),
     [kind, selectedMode.key, selectedModel.id]
   );
+  const compatibleModes = catalog.modes.filter((mode) => selectedModel.modeKeys.includes(mode.key));
   const basicParams = activeParams.filter((param) => param.visibility === "basic");
-  const advancedParams = activeParams.filter((param) => param.visibility === "advanced");
   const internalParams = activeParams.filter((param) => param.visibility === "internal");
   const activeSlotKeys = new Set(activeSlots.map((slot) => slot.key));
   const activeSlotUploads = state.slots.filter((slot) => activeSlotKeys.has(slot.slotKey));
+  const mentionAssets = getGenerationMentionAssets(state.slots);
   const credits = estimateGenerationCredits(kind, selectedModel.id, state.paramValues);
   const hasPrompt = state.prompt.trim().length > 0;
   const hasRequiredAssets = selectedMode.allowPromptOnly || activeSlotUploads.length > 0;
@@ -440,12 +483,31 @@ export function GenerationView({ active, kind, state, onStateChange, onRouteChan
       if (bottomScrollFrame.current !== null) {
         window.cancelAnimationFrame(bottomScrollFrame.current);
       }
+      pollTimeouts.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      pollTimeouts.current = [];
     };
   }, []);
 
   useEffect(() => {
     isCollapsedRef.current = isCollapsed;
   }, [isCollapsed]);
+
+  useEffect(() => {
+    if (!active) return undefined;
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (composerRef.current?.contains(target)) return;
+
+      setOpenMenu(null);
+      setMentionStart(null);
+      setMentionMenu((current) => (current.open ? { ...current, open: false } : current));
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [active]);
 
   useEffect(() => {
     if (!active) return undefined;
@@ -515,8 +577,8 @@ export function GenerationView({ active, kind, state, onStateChange, onRouteChan
       ...current,
       modelId,
       modeKey,
-      paramValues: mergeModelDefaults(current.paramValues, modelId, kind),
-      slots: current.slots.filter((slot) => model.slotKeys.includes(slot.slotKey))
+      paramValues: getDefaultGenerationParamValues(model),
+      slots: filterGenerationSlots(current.slots, (slot) => model.slotKeys.includes(slot.slotKey))
     }));
     setOpenMenu(null);
   }
@@ -525,7 +587,7 @@ export function GenerationView({ active, kind, state, onStateChange, onRouteChan
     onStateChange(kind, (current) => ({
       ...current,
       modeKey,
-      slots: current.slots.filter((slot) => {
+      slots: filterGenerationSlots(current.slots, (slot) => {
         const mode = getGenerationMode(kind, modeKey);
         return mode.slotKeys.includes(slot.slotKey);
       })
@@ -533,22 +595,240 @@ export function GenerationView({ active, kind, state, onStateChange, onRouteChan
     setOpenMenu(null);
   }
 
-  function addSlot(slot: GenerationSlot) {
+  function addSlotFiles(slot: GenerationSlot, files: File[]) {
     const currentCount = state.slots.filter((item) => item.slotKey === slot.key).length;
-    if (currentCount >= slot.max) {
+    const acceptedFiles = files.slice(0, Math.max(0, slot.max - currentCount));
+
+    if (acceptedFiles.length < files.length || currentCount >= slot.max) {
       onToast(`${slot.label} 已达到 ${slot.max} 个上限`);
+    }
+
+    if (!acceptedFiles.length) return;
+
+    patch({
+      slots: [
+        ...state.slots,
+        ...acceptedFiles.map((file, index) => createGenerationSlotInputFromFile(slot, file, currentCount + index))
+      ]
+    });
+    onToast(`已添加${acceptedFiles.length} 个${slot.label}`);
+  }
+
+  function addDroppedSlotFiles(files: File[]) {
+    const assignment = assignFilesToGenerationSlots({
+      kind,
+      model: selectedModel,
+      modes: catalog.modes,
+      slots: catalog.slots,
+      modeKey: state.modeKey,
+      existingInputs: state.slots,
+      files
+    });
+
+    if (!assignment.mediaFileCount) {
+      onToast("只支持拖入图片或视频素材");
       return;
     }
 
-    patch({ slots: [...state.slots, createMockSlotInput(slot, currentCount)] });
-    onToast(`已添加${slot.label} mock 素材`);
+    if (!assignment.assignments.length) {
+      onToast(kind === "image" ? "图片生成当前只支持图片参考" : "当前素材槽已满或模型不支持该素材");
+      return;
+    }
+
+    const nextMode = getGenerationMode(kind, assignment.modeKey);
+    const baseSlots =
+      assignment.modeKey === state.modeKey
+        ? state.slots
+        : filterGenerationSlots(
+            state.slots,
+            (slot) => nextMode.slotKeys.includes(slot.slotKey) && selectedModel.slotKeys.includes(slot.slotKey)
+          );
+
+    patch({
+      modeKey: assignment.modeKey,
+      slots: [
+        ...baseSlots,
+        ...assignment.assignments.map(({ slot, file, index }) => createGenerationSlotInputFromFile(slot, file, index))
+      ]
+    });
+    setOpenMenu(null);
+    closeMentionMenu();
+
+    const ignoredCount = assignment.rejectedCount + assignment.unsupportedCount;
+    onToast(`已添加${assignment.assignments.length} 个素材${ignoredCount ? `，${ignoredCount} 个未添加` : ""}`);
   }
 
   function removeSlot(inputId: string) {
+    const removedSlot = state.slots.find((slot) => slot.id === inputId);
+    if (removedSlot) revokeGenerationSlotPreview(removedSlot);
     patch({ slots: state.slots.filter((slot) => slot.id !== inputId) });
   }
 
-  function submit() {
+  function closeMentionMenu() {
+    setMentionMenu((current) => ({ ...current, open: false }));
+    setMentionStart(null);
+  }
+
+  function openMentionMenu(anchor: GenerationMentionMenuState["anchor"], mentionStartPos: number | null = null, position: GenerationMentionMenuState["position"] = null) {
+    setOpenMenu(null);
+    setMentionStart(mentionStartPos);
+    setSelectedMentionIndex(0);
+    setMentionMenu({
+      anchor,
+      open: true,
+      position: anchor === "prompt" ? position : null
+    });
+  }
+
+  function insertMention(asset: GenerationMentionAsset, textarea: HTMLTextAreaElement | null) {
+    const promptValue = state.prompt;
+    const reference = `@${asset.id} `;
+    const selectionStart = textarea?.selectionStart ?? promptValue.length;
+    const selectionEnd = textarea?.selectionEnd ?? selectionStart;
+    const shouldReplacePreviousAt = mentionStart === null && selectionStart === selectionEnd && selectionStart > 0 && promptValue[selectionStart - 1] === "@";
+    const start = mentionStart ?? (shouldReplacePreviousAt ? selectionStart - 1 : selectionStart);
+    const end = mentionStart !== null ? mentionStart + 1 : shouldReplacePreviousAt ? selectionStart : selectionEnd;
+    const nextPrompt = promptValue.slice(0, start) + reference + promptValue.slice(end);
+    const nextCursorPosition = start + reference.length;
+
+    patch({ prompt: nextPrompt });
+    closeMentionMenu();
+
+    window.setTimeout(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(nextCursorPosition, nextCursorPosition);
+    }, 0);
+  }
+
+  function handlePromptChange(event: ChangeEvent<HTMLTextAreaElement>) {
+    const nextPrompt = event.target.value;
+    const cursorPosition = event.target.selectionStart;
+    patch({ prompt: nextPrompt });
+
+    if (cursorPosition > 0 && nextPrompt[cursorPosition - 1] === "@" && mentionAssets.length > 0) {
+      const mentionPosition = getGenerationMentionPromptPosition(event.currentTarget, nextPrompt);
+      setMentionStart(cursorPosition - 1);
+      window.requestAnimationFrame(() => openMentionMenu("prompt", cursorPosition - 1, mentionPosition));
+      return;
+    }
+
+    if (mentionMenu.open) closeMentionMenu();
+  }
+
+  function handlePromptKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (!mentionMenu.open || !mentionAssets.length) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setSelectedMentionIndex((current) => (current < mentionAssets.length - 1 ? current + 1 : 0));
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setSelectedMentionIndex((current) => (current > 0 ? current - 1 : mentionAssets.length - 1));
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === "Tab") {
+      event.preventDefault();
+      const selectedAsset = mentionAssets[selectedMentionIndex];
+      if (selectedAsset) insertMention(selectedAsset, event.currentTarget);
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeMentionMenu();
+    }
+  }
+
+  function handleMediaDrag(event: DragEvent<HTMLDivElement>) {
+    if (!hasMediaDataTransfer(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setIsDropActive(true);
+    if (isCollapsedRef.current) {
+      forceExpandedRef.current = true;
+      setIsCollapsed(false);
+    }
+  }
+
+  function handleMediaDragLeave(event: DragEvent<HTMLDivElement>) {
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
+    setIsDropActive(false);
+  }
+
+  function handleMediaDrop(event: DragEvent<HTMLDivElement>) {
+    if (!hasMediaDataTransfer(event.dataTransfer)) return;
+    event.preventDefault();
+    setIsDropActive(false);
+    addDroppedSlotFiles(Array.from(event.dataTransfer.files));
+  }
+
+  async function refreshViduTask(localTaskId: string, providerTaskId: string, startedAt: number, showToastOnProgress = false) {
+    try {
+      const response = await fetch(`/api/vidu/tasks/${encodeURIComponent(providerTaskId)}`, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+
+      const result = (await response.json()) as ViduTaskResponse;
+      const nextStatus = mapViduState(result.state);
+      const output = getViduOutput(kind, result);
+      const nextProgress = getViduProgress(nextStatus, startedAt);
+      const errorMessage = nextStatus === "failed" ? result.errCode || "Vidu 任务生成失败。" : undefined;
+
+      onStateChange(kind, (current) =>
+        updateTask(current, localTaskId, {
+          status: nextStatus,
+          progress: nextProgress,
+          credits: result.credits ?? current.history.find((task) => task.id === localTaskId)?.credits ?? credits,
+          durationLabel: nextStatus === "succeeded" || nextStatus === "failed" ? getElapsedLabel(startedAt) : undefined,
+          errorMessage,
+          output: {
+            ...(current.history.find((task) => task.id === localTaskId)?.output ?? {
+              kind,
+              title: `${kind === "video" ? "Video" : "Image"} draft`
+            }),
+            ...output
+          }
+        })
+      );
+
+      if (showToastOnProgress) {
+        onToast(nextStatus === "succeeded" ? "Vidu 生成已完成" : `Vidu 任务状态：${statusCopy[nextStatus]}`);
+      }
+
+      return nextStatus === "succeeded" || nextStatus === "failed";
+    } catch (error) {
+      onStateChange(kind, (current) =>
+        updateTask(current, localTaskId, {
+          status: "failed",
+          progress: 100,
+          durationLabel: getElapsedLabel(startedAt),
+          errorMessage: getErrorMessage(error)
+        })
+      );
+      onToast(getErrorMessage(error));
+      return true;
+    }
+  }
+
+  function scheduleViduPoll(localTaskId: string, providerTaskId: string, startedAt: number, delay = 2400) {
+    const timeoutId = window.setTimeout(async () => {
+      pollTimeouts.current = pollTimeouts.current.filter((item) => item !== timeoutId);
+      const isDone = await refreshViduTask(localTaskId, providerTaskId, startedAt);
+      if (!isDone) {
+        scheduleViduPoll(localTaskId, providerTaskId, startedAt, 3200);
+      }
+    }, delay);
+
+    pollTimeouts.current.push(timeoutId);
+  }
+
+  async function submit() {
     if (!canSubmit) {
       if (!hasPrompt) {
         onToast("请先输入生成描述");
@@ -558,7 +838,8 @@ export function GenerationView({ active, kind, state, onStateChange, onRouteChan
       return;
     }
 
-    const task = createMockTask({
+    const startedAt = Date.now();
+    const task = createPendingTask({
       activeSlots,
       credits,
       kind,
@@ -574,25 +855,79 @@ export function GenerationView({ active, kind, state, onStateChange, onRouteChan
     const shouldKeepBottomPinned = isNearPageBottom();
 
     onStateChange(kind, (current) => ({ ...current, history: [...current.history, task] }));
-    onToast(kind === "video" ? "已创建 mock 视频生成任务" : "已创建 mock 图片生成任务");
+    onToast(kind === "video" ? "正在提交 Vidu 视频任务" : "正在提交 Vidu 图片任务");
     if (shouldKeepBottomPinned) {
       scrollToGenerationBottomAfterLayout("auto");
     }
 
-    window.setTimeout(() => {
-      onStateChange(kind, (current) => updateTask(current, task.id, { status: "running", progress: 48 }));
-    }, 650);
+    try {
+      const slotPayloads = await buildViduSlotPayloads(activeSlotUploads);
 
-    window.setTimeout(() => {
+      onStateChange(kind, (current) => updateTask(current, task.id, { status: "running", progress: 16 }));
+
+      const response = await fetch("/api/vidu/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          kind,
+          modeKey: selectedMode.key,
+          modelId: selectedModel.id,
+          prompt: state.prompt.trim(),
+          params: state.paramValues,
+          slots: slotPayloads
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+
+      const result = (await response.json()) as ViduGenerateResponse;
+      const nextStatus = mapViduState(result.state);
+
       onStateChange(kind, (current) =>
         updateTask(current, task.id, {
-          status: "succeeded",
-          progress: 100,
-          durationLabel: kind === "video" ? "24s" : "9s"
+          providerTaskId: result.taskId,
+          modelName: selectedModel.displayName,
+          status: nextStatus,
+          progress: getViduProgress(nextStatus, startedAt),
+          credits: result.credits ?? task.credits,
+          createdAt: result.createdAt ? "Just now" : task.createdAt
         })
       );
-    }, 1550);
+      onToast(`已提交 Vidu 任务 ${result.taskId.slice(0, 8)}`);
+      scheduleViduPoll(task.id, result.taskId, startedAt);
+    } catch (error) {
+      onStateChange(kind, (current) =>
+        updateTask(current, task.id, {
+          status: "failed",
+          progress: 100,
+          durationLabel: getElapsedLabel(startedAt),
+          errorMessage: getErrorMessage(error)
+        })
+      );
+      onToast(getErrorMessage(error));
+    }
   }
+
+  submitRef.current = submit;
+
+  useEffect(() => {
+    if (!active || autoSubmitToken === null) return undefined;
+    if (autoSubmitHandledRef.current === autoSubmitToken) return undefined;
+
+    const frameId = window.requestAnimationFrame(() => {
+      if (autoSubmitHandledRef.current === autoSubmitToken) return;
+      autoSubmitHandledRef.current = autoSubmitToken;
+      void submitRef.current();
+      scrollToGenerationBottomAfterLayout("smooth");
+      onAutoSubmitHandled?.(kind, autoSubmitToken);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [active, autoSubmitToken, kind, onAutoSubmitHandled]);
 
   function renderParamOptions(param: GenerationParam) {
     if (!param.options?.length) {
@@ -632,7 +967,11 @@ export function GenerationView({ active, kind, state, onStateChange, onRouteChan
     ));
   }
 
-  function renderTask(task: GenerationTask) {
+  function getTaskRenderKey(task: GenerationTask, index: number) {
+    return task.providerTaskId ? `provider:${task.providerTaskId}` : `local:${task.id}:${task.createdAt}:${index}`;
+  }
+
+  function renderTask(task: GenerationTask, index: number) {
     const taskTypeLabel = task.kind === "video" ? "Video" : "Image";
     const outputPreview = getTaskOutputPreviewItem(task);
     const outputClassName = `generation-task-output is-${task.kind} is-${task.status} ${outputPreview ? "is-preview-ready is-detail-ready" : ""}`;
@@ -653,7 +992,7 @@ export function GenerationView({ active, kind, state, onStateChange, onRouteChan
         {task.status === "failed" ? (
           <div className="generation-failed-shell">
             <X size={18} />
-            <span>生成失败，请调整 prompt 或参数后重试。</span>
+            <span>{task.errorMessage || "生成失败，请调整 prompt 或参数后重试。"}</span>
           </div>
         ) : null}
 
@@ -671,7 +1010,7 @@ export function GenerationView({ active, kind, state, onStateChange, onRouteChan
     );
 
     return (
-      <article className={`generation-task-item is-${task.status}`} key={task.id}>
+      <article className={`generation-task-item is-${task.status}`} key={getTaskRenderKey(task, index)}>
         <div className="generation-task-header">
           <div className="generation-task-refs" aria-label="Task reference assets">
             {task.slots.length ? (
@@ -730,14 +1069,35 @@ export function GenerationView({ active, kind, state, onStateChange, onRouteChan
           </span>
           <div className="generation-task-actions">
             {isGeneratingStatus(task.status) ? (
-              <button className="task-action-btn" type="button" onClick={() => onToast("Mock 任务会自动刷新状态")}>
+              <button
+                className="task-action-btn"
+                type="button"
+                onClick={() => {
+                  if (!task.providerTaskId) {
+                    onToast("等待 Vidu 返回任务 ID");
+                    return;
+                  }
+                  void refreshViduTask(task.id, task.providerTaskId, Date.now(), true);
+                }}
+              >
                 <RefreshCw size={13} />
                 刷新
               </button>
             ) : null}
             {task.status === "succeeded" ? (
               <>
-                <button className="task-action-btn" type="button" onClick={() => onToast("Mock 输出暂不需要下载")}>
+                <button
+                  className="task-action-btn"
+                  type="button"
+                  onClick={() => {
+                    const downloadUrl = task.output.downloadUrl ?? task.output.assetUrl;
+                    if (!downloadUrl) {
+                      onToast("生成物暂无可下载 URL");
+                      return;
+                    }
+                    window.open(downloadUrl, "_blank", "noopener,noreferrer");
+                  }}
+                >
                   <Download size={13} />
                   下载
                 </button>
@@ -800,7 +1160,21 @@ export function GenerationView({ active, kind, state, onStateChange, onRouteChan
         </div>
 
         <div className="generator-dialog-wrapper">
-          <div className={`composer-dialog generation-composer-dialog ${isCollapsed ? "collapsed" : ""}`} data-composer={kind}>
+          <div
+            ref={composerRef}
+            className={`composer-dialog generation-composer-dialog ${isCollapsed ? "collapsed" : ""} ${isDropActive ? "is-drop-active" : ""}`}
+            data-composer={kind}
+            onDragEnter={handleMediaDrag}
+            onDragOver={handleMediaDrag}
+            onDragLeave={handleMediaDragLeave}
+            onDrop={handleMediaDrop}
+          >
+            {isDropActive ? (
+              <div className="input-drop-overlay" aria-hidden="true">
+                <Upload size={18} />
+                <span>{kind === "video" ? "松开上传图片或视频" : "松开上传参考图"}</span>
+              </div>
+            ) : null}
             <button
               className={`return-btn ${isCollapsed ? "visible" : ""}`}
               type="button"
@@ -827,53 +1201,53 @@ export function GenerationView({ active, kind, state, onStateChange, onRouteChan
               >
                 {activeSlots.map((slot) => {
                   const uploads = state.slots.filter((item) => item.slotKey === slot.key);
-                  const Icon = slot.kind === "video" ? Video : ImageIcon;
-                  const uploaded = uploads.length > 0;
 
                   return (
-                    <div className="slot-stack-wrap" key={slot.key}>
-                      <button
-                        className={`slot-stack ${uploaded ? "has-upload" : ""}`}
-                        type="button"
-                        aria-label={`添加${slot.label}`}
-                        title={slot.description}
-                        onClick={() => addSlot(slot)}
-                      >
-                        {slot.min > 0 ? <span className="slot-required-mark" aria-hidden="true">*</span> : null}
-                        <span className="stack-card add-card">
-                          {uploaded && uploads[0]?.previewUrl ? (
-                            <span className="slot-thumb" style={{ backgroundImage: `url(${uploads[0].previewUrl})` }} />
-                          ) : (
-                            <Icon size={22} />
-                          )}
-                          <span className="slot-upload-plus">{uploaded ? uploads.length : "+"}</span>
-                        </span>
-                        <span className="slot-label" data-kind={slot.kind}>{slot.shortLabel}</span>
-                      </button>
-                      {uploaded ? (
-                        <button className="slot-remove-mini" type="button" aria-label={`移除${slot.label}`} onClick={() => removeSlot(uploads[uploads.length - 1].id)}>
-                          <X size={11} />
-                        </button>
-                      ) : null}
-                    </div>
+                    <GenerationSlotStack
+                      isCollapsedDialog={isCollapsed}
+                      key={slot.key}
+                      slot={slot}
+                      uploads={uploads}
+                      onFilesSelected={(files) => addSlotFiles(slot, files)}
+                      onPreviewUpload={(input) => {
+                        const preview = getSlotPreviewItem(input);
+                        if (preview) setPreviewItem(preview);
+                      }}
+                      onRemoveUpload={(input) => removeSlot(input.id)}
+                    />
                   );
                 })}
               </div>
 
               <div className="composer-prompt-area">
                 <textarea
+                  ref={promptRef}
                   id={`${kind}-prompt`}
                   className="composer-prompt"
                   placeholder={catalog.placeholder}
                   value={state.prompt}
-                  onChange={(event) => patch({ prompt: event.target.value })}
+                  onChange={handlePromptChange}
                   onFocus={() => {
+                    setOpenMenu(null);
                     if (isCollapsedRef.current) {
                       forceExpandedRef.current = true;
                       setIsCollapsed(false);
                     }
                   }}
+                  onKeyDown={handlePromptKeyDown}
+                  onPointerDown={() => setOpenMenu(null)}
                 />
+                {mentionMenu.open && mentionMenu.anchor === "prompt" ? (
+                  <GenerationImageMentionMenu
+                    assets={mentionAssets}
+                    insertAsset={(asset) => insertMention(asset, promptRef.current)}
+                    itemRefs={mentionItemRefs}
+                    menu={mentionMenu}
+                    menuRef={mentionMenuRef}
+                    selectedIndex={selectedMentionIndex}
+                    setSelectedIndex={setSelectedMentionIndex}
+                  />
+                ) : null}
               </div>
             </div>
 
@@ -927,27 +1301,25 @@ export function GenerationView({ active, kind, state, onStateChange, onRouteChan
                 </div>
               </div>
 
-              {kind === "video" ? (
+              {compatibleModes.length ? (
                 <div className="composer-dropdown">
                   <button className="pill-btn" type="button" onClick={() => setOpenMenu(openMenu === "mode" ? null : "mode")}>
                     <span>{selectedMode.label}</span>
                     <span className="chevron">▾</span>
                   </button>
                   <div className={`composer-menu ${openMenu === "mode" ? "open" : ""}`}>
-                    <div className="menu-title">视频模式</div>
-                    {catalog.modes
-                      .filter((mode) => selectedModel.modeKeys.includes(mode.key))
-                      .map((mode) => (
-                        <button
-                          className={`dropdown-item ${selectedMode.key === mode.key ? "active" : ""}`}
-                          type="button"
-                          key={mode.key}
-                          onClick={() => selectMode(mode.key)}
-                        >
-                          <span>{mode.label}</span>
-                          {selectedMode.key === mode.key ? <Check size={14} /> : null}
-                        </button>
-                      ))}
+                    <div className="menu-title">{kind === "video" ? "视频模式" : "图片模式"}</div>
+                    {compatibleModes.map((mode) => (
+                      <button
+                        className={`dropdown-item ${selectedMode.key === mode.key ? "active" : ""}`}
+                        type="button"
+                        key={mode.key}
+                        onClick={() => selectMode(mode.key)}
+                      >
+                        <span>{mode.label}</span>
+                        {selectedMode.key === mode.key ? <Check size={14} /> : null}
+                      </button>
+                    ))}
                   </div>
                 </div>
               ) : null}
@@ -966,57 +1338,6 @@ export function GenerationView({ active, kind, state, onStateChange, onRouteChan
                   </div>
                 </div>
               ))}
-
-              <div className="advanced-wrap">
-                <button
-                  className="pill-btn advanced-icon-btn"
-                  type="button"
-                  aria-expanded={openMenu === "advanced"}
-                  aria-label="高级选项"
-                  onClick={() => setOpenMenu(openMenu === "advanced" ? null : "advanced")}
-                >
-                  <SlidersHorizontal size={16} />
-                </button>
-                <div className={`advanced-panel ${openMenu === "advanced" ? "open" : ""}`}>
-                  <div className="advanced-panel-body">
-                    {advancedParams.length ? (
-                      advancedParams.map((param) => (
-                        <label key={param.id}>
-                          {param.label}
-                          {param.options?.length ? (
-                            <select
-                              value={String(state.paramValues[param.id] ?? param.defaultValue ?? "")}
-                              onChange={(event) => setParamValue(param.id, event.target.value)}
-                            >
-                              {param.options.map((option) => (
-                                <option key={`${param.id}-${String(option.value)}`} value={String(option.value)}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              type={param.component === "number" ? "number" : "text"}
-                              min={param.min}
-                              max={param.max}
-                              step={param.step}
-                              placeholder="Auto"
-                              value={String(state.paramValues[param.id] ?? "")}
-                              onChange={(event) => {
-                                const value = event.target.value;
-                                setParamValue(param.id, value === "" ? undefined : param.component === "number" ? Number(value) : value);
-                              }}
-                            />
-                          )}
-                          {param.helper ? <small>{param.helper}</small> : null}
-                        </label>
-                      ))
-                    ) : (
-                      <div className="history-detail-empty">当前模型没有高级参数。</div>
-                    )}
-                  </div>
-                </div>
-              </div>
 
               <div className="spacer" />
 

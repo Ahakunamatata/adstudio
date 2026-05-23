@@ -6,10 +6,25 @@
   "scripts": {
     "dev": "next dev --webpack --hostname 127.0.0.1 --port 3010",
     "build": "next build --webpack",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "accept:m32": "node scripts/m32-acceptance.mjs",
+    "accept:m325": "node scripts/m325-ai-sdk-foundation.mjs",
+    "accept:m33": "node scripts/m33-regression.mjs",
+    "accept:m4": "node scripts/m4-approval-canvas.mjs",
+    "accept:m54": "node scripts/m54-workbench-generation.mjs",
+    "accept:m55": "node scripts/m55-supabase-storage.mjs",
+    "accept:m56": "node scripts/m56-generation-result-loop.mjs",
+    "accept:m57": "node scripts/m57-supabase-project-store.mjs",
+    "accept:m58": "node scripts/m58-session-replay-pm-panel.mjs",
+    "smoke:m58:workbench-vidu-real": "node scripts/m58-workbench-vidu-real-e2e.mjs",
+    "smoke:m57:supabase-real": "node scripts/m57-real-supabase-project-store.mjs",
+    "smoke:m53a:vidu-preflight": "node scripts/m53a-vidu-smoke-preflight.mjs",
+    "smoke:m53b:vidu-live": "node scripts/m53b-vidu-live-smoke.mjs"
   },
   "dependencies": {
+    "@ai-sdk/google": "^3.0.75",
     "@xyflow/react": "^12.10.2",
+    "ai": "^6.0.185",
     "lucide-react": "latest",
     "next": "latest",
     "react": "latest",
@@ -22,6 +37,7 @@
     "@types/react-dom": "latest",
     "eslint": "^9.39.1",
     "eslint-config-next": "latest",
+    "playwright-core": "^1.60.0",
     "typescript": "latest"
   },
   "pnpm": {

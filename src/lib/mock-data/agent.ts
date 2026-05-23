@@ -88,14 +88,14 @@ export const launcherCopy = {
     kicker: "Ad Video",
     title: "快速生成广告视频",
     placeholder: "描述你想生成的广告视频，也可以上传参考图、产品图或短视频片段。",
-    cta: "打开 Ad Video 表单",
+    cta: "生成视频",
     pill: "快速工具"
   },
   image: {
     kicker: "Ad Image",
     title: "快速生成广告图片",
     placeholder: "描述你想生成的广告图片，说明产品、画面主体、文案区域、比例和风格。",
-    cta: "打开 Ad Image 表单",
+    cta: "生成图片",
     pill: "快速工具"
   }
 };

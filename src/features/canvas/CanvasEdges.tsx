@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  EdgeLabelRenderer,
   Position,
   getBezierPath,
+  useStore,
   type ConnectionLineComponentProps,
-  type Edge,
   type EdgeProps
 } from "@xyflow/react";
-import type { AdCanvasFlowNode, EdgeFlowVariant } from "./types";
+import { Unlink2 } from "lucide-react";
+import type { AdCanvasFlowEdge, AdCanvasFlowNode, EdgeFlowVariant } from "./types";
 
 export const AD_CANVAS_EDGE_TYPE = "adCanvasBezier";
 
@@ -241,8 +243,8 @@ function AdCanvasBezierEdge({
   targetPosition,
   style,
   data
-}: EdgeProps<Edge<{ flowVariant?: EdgeFlowVariant }>>) {
-  const [path] = getBezierPath({
+}: EdgeProps<AdCanvasFlowEdge>) {
+  const [path, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
     targetX,
@@ -251,6 +253,9 @@ function AdCanvasBezierEdge({
     targetPosition
   });
   const flowVariant = data?.flowVariant ?? "idle";
+  const showDisconnect = flowVariant === "hovered";
+  const zoom = useStore((store) => store.transform[2]);
+  const labelScale = zoom > 0 ? Math.min(3, Math.max(0.6, 1 / zoom)) : 1;
   const flowBounds = {
     x: Math.min(sourceX, targetX) - 28,
     y: Math.min(sourceY, targetY) - 28,
@@ -267,9 +272,30 @@ function AdCanvasBezierEdge({
         stroke="transparent"
         strokeWidth={20}
         pointerEvents="stroke"
+        onPointerEnter={() => data?.onHoverChange?.(id)}
+        onPointerMove={() => data?.onHoverChange?.(id)}
       />
       <path className="ad-canvas-edge__path react-flow__edge-path" d={path} fill="none" style={style} />
       <EdgeFlowSegments edgeId={id} path={path} variant={flowVariant} bounds={flowBounds} />
+      {showDisconnect ? (
+        <EdgeLabelRenderer>
+          <button
+            className="ad-canvas-edge-disconnect nodrag nopan"
+            type="button"
+            aria-label="断开连接"
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px) scale(${labelScale})` }}
+            onClick={(event) => {
+              event.stopPropagation();
+              data?.onDisconnect?.(id);
+            }}
+            onMouseEnter={() => data?.onHoverChange?.(id)}
+            onMouseLeave={() => data?.onHoverChange?.(null)}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <Unlink2 size={13} />
+          </button>
+        </EdgeLabelRenderer>
+      ) : null}
     </>
   );
 }

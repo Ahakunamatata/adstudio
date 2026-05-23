@@ -10,7 +10,7 @@ import {
   specOptions,
   wizardCopy
 } from "@/lib/mock-data";
-import { createAgentSession, formatSessionSpecs, getAgentOrder } from "./agent-session";
+import { createAgentSession, createDefaultAgentAssets, formatSessionSpecs, getAgentOrder } from "./agent-session";
 
 type AgentSetupViewProps = {
   active: boolean;
@@ -55,7 +55,21 @@ export function AgentSetupView({
   }
 
   function startWorkbench() {
-    const session = createAgentSession(mode, product, creativeGoal);
+    const uploadedAssets = [
+      ...createDefaultAgentAssets(product),
+      ...(competitorUploaded
+        ? [
+            {
+              id: "asset-setup-competitor",
+              role: "competitor_asset" as const,
+              name: "competitor_ad_15s.mp4",
+              kind: "video" as const,
+              source: "mock" as const
+            }
+          ]
+        : [])
+    ];
+    const session = createAgentSession(mode, product, creativeGoal, uploadedAssets);
     session.product = product;
     session.competitor = competitorUploaded ? "competitor_ad_15s.mp4" : "";
     session.focus = focus;

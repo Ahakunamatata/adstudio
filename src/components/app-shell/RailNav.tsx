@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import type { AppRoute } from "@/lib/domain/schemas";
-import { navRoutes, type NavRoute } from "@/lib/routes/routes";
+import { getRoutePath, navRoutes, type NavRoute } from "@/lib/routes/routes";
 
 type RailIconProps = {
   className?: string;
@@ -9,7 +10,7 @@ type RailIconProps = {
   size?: number;
 };
 
-function RailIcon({ className, id, size = 21 }: RailIconProps) {
+function RailIcon({ className, id, size = 22 }: RailIconProps) {
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" fill="none">
       {id === "home" ? (
@@ -43,9 +44,9 @@ function RailIcon({ className, id, size = 21 }: RailIconProps) {
       ) : null}
       {id === "templates" ? (
         <>
-          <rect x="4" y="4" width="16" height="6.2" rx="1.3" />
-          <rect x="4" y="14" width="8" height="6" rx="1.3" />
-          <rect className="rail-icon-accent" x="15" y="14" width="5" height="6" rx="1.2" />
+          <rect x="4.2" y="4" width="15.6" height="6.2" rx="1.3" />
+          <rect x="4.2" y="13.8" width="6.8" height="6.2" rx="1.3" />
+          <rect className="rail-icon-accent" x="13" y="13.8" width="6.8" height="6.2" rx="1.3" />
         </>
       ) : null}
       {id === "assets" ? (
@@ -73,16 +74,20 @@ export function RailNav({ route, onRouteChange }: RailNavProps) {
       </div>
       {navRoutes.map((item) => {
         return (
-          <button
+          <Link
             key={item.id}
+            href={getRoutePath(item.id)}
             className={`rail-btn ${route === item.id ? "is-active" : ""}`}
             aria-label={item.ariaLabel}
-            type="button"
-            onClick={() => onRouteChange(item.id)}
+            aria-current={route === item.id ? "page" : undefined}
+            onClick={(event) => {
+              event.preventDefault();
+              onRouteChange(item.id);
+            }}
           >
-            <RailIcon className="icon rail-icon" id={item.id} size={21} />
+            <RailIcon className="icon rail-icon" id={item.id} />
             <span>{item.label}</span>
-          </button>
+          </Link>
         );
       })}
     </aside>

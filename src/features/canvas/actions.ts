@@ -7,7 +7,7 @@ import type {
   CanvasNodeVersion,
   NodeStatus
 } from "@/lib/domain/schemas";
-import type { CanvasActionResult, CanvasCreateNodeInput, CanvasRuntimeAction } from "./types";
+import type { CanvasActionResult, CanvasCreateNodeInput, CanvasGenerationResult, CanvasRuntimeAction } from "./types";
 
 const nodeKindLabel: Record<CanvasNodeKind, string> = {
   text: "Text",
@@ -51,6 +51,34 @@ const nodeKindCost: Record<CanvasNodeKind, number> = {
 
 function uniqueValues(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
+}
+
+function normalizeNodeTitle(title: string) {
+  return title.trim().replace(/\s+/g, " ");
+}
+
+function getTitleKey(title: string) {
+  return normalizeNodeTitle(title).toLocaleLowerCase();
+}
+
+function isTitleTaken(nodes: CanvasNode[], title: string, exceptNodeId?: string) {
+  const titleKey = getTitleKey(title);
+  if (!titleKey) return false;
+  return nodes.some((node) => node.id !== exceptNodeId && getTitleKey(node.title) === titleKey);
+}
+
+function getUniqueNodeTitle(nodes: CanvasNode[], title: string, exceptNodeId?: string) {
+  const baseTitle = normalizeNodeTitle(title) || "Untitled node";
+  if (!isTitleTaken(nodes, baseTitle, exceptNodeId)) return baseTitle;
+
+  let index = 2;
+  let nextTitle = `${baseTitle} ${index}`;
+  while (isTitleTaken(nodes, nextTitle, exceptNodeId)) {
+    index += 1;
+    nextTitle = `${baseTitle} ${index}`;
+  }
+
+  return nextTitle;
 }
 
 export function findCanvasNode(nodes: CanvasNode[], nodeId: string) {
@@ -116,8 +144,8 @@ function getDefaultNodeSettings(kind: CanvasNodeKind): CanvasNodeSettings {
   return {};
 }
 
-function createVersion(node: CanvasNode, content: string): CanvasNodeVersion {
-  const version = node.versions.length + 1;
+function createVersion(node: CanvasNode, content: string, result?: CanvasGenerationResult, versionOverride?: number): CanvasNodeVersion {
+  const version = versionOverride ?? node.versions.length + 1;
   const credits = nodeKindCost[node.kind] + Math.max(0, version - 1);
   const seconds = node.kind === "video" ? 42 + version * 5 : node.kind === "image" ? 14 + version * 3 : 6 + version * 2;
 
@@ -133,41 +161,47 @@ function createVersion(node: CanvasNode, content: string): CanvasNodeVersion {
       hour: "2-digit",
       minute: "2-digit"
     }),
-    model: node.model,
-    time: `${seconds}s`,
-    cost: `${credits} credits`,
-    previewClass: node.previewClass
+    model: result?.model ?? node.model,
+    time: result?.time ?? `${seconds}s`,
+    cost: result?.cost ?? `${credits} credits`,
+    previewClass: node.previewClass,
+    assetUrl: result?.assetUrl,
+    downloadUrl: result?.downloadUrl,
+    providerTaskId: result?.providerTaskId,
+    params: result?.params,
+    slots: result?.slots
   };
 }
 
-function createGeneratedContent(node: CanvasNode) {
-  const prompt = node.settings?.prompt?.trim() || node.output.trim() || node.input.trim();
+function isPlaceholderInitialVersion(node: CanvasNode) {
+  const version = node.versions[0];
+  return Boolean(
+    node.versions.length === 1 &&
+    version &&
+    version.version === 1 &&
+    version.id === node.primaryVersionId &&
+    !version.providerTaskId &&
+    !version.assetUrl &&
+    !version.downloadUrl &&
+    version.content === node.output
+  );
+}
 
-  if (node.kind === "image") {
-    return [
-      `Mock image generated for ${node.title}.`,
-      `Prompt: ${prompt}`,
-      `Params: ${node.settings?.ratio ?? "9:16"} · ${node.settings?.resolution ?? "1k"} · ${node.settings?.batch ?? "1"}x`
-    ].join("\n");
-  }
-
-  if (node.kind === "video") {
-    return [
-      `Mock video generated for ${node.title}.`,
-      `Prompt: ${prompt}`,
-      `Params: ${node.settings?.resolution ?? "720p"} · ${node.settings?.duration ?? "6s"} · ${node.settings?.ratio ?? "9:16"}`
-    ].join("\n");
-  }
-
-  if (node.kind === "upload") {
-    return `${node.settings?.uploadedFileName ?? "Mock uploaded asset"} 已进入画布，可作为下游输入引用。`;
-  }
-
-  return `${node.output.replace(/\s+/g, " ").slice(0, 160)}\n\nMock generation result for ${node.title}.`;
+function withoutErrorMessage(settings: CanvasNodeSettings | undefined): CanvasNodeSettings | undefined {
+  if (!settings) return undefined;
+  const nextSettings = { ...settings };
+  delete nextSettings.errorMessage;
+  return nextSettings;
 }
 
 function nodeHasGeneratedOutput(node: CanvasNode) {
-  return ["succeeded", "locked", "stale", "waiting_user"].includes(node.status) || node.versions.length > 0;
+  return node.status !== "draft" && (["succeeded", "locked", "stale", "waiting_user", "uploaded", "checked", "completed"].includes(node.status) || node.versions.length > 0);
+}
+
+function getDefaultPreviewClass(kind: CanvasNodeKind) {
+  if (kind === "text") return "text";
+  if (kind === "image" || kind === "video") return "empty-media";
+  return kind;
 }
 
 function withSyncedParentRefs(nodes: CanvasNode[], edges: CanvasEdge[]) {
@@ -211,15 +245,24 @@ export function markDownstreamStale(nodes: CanvasNode[], edges: CanvasEdge[], so
 }
 
 function createCanvasNode(nodes: CanvasNode[], edges: CanvasEdge[], input: CanvasCreateNodeInput): CanvasActionResult {
+  if (input.id && nodes.some((node) => node.id === input.id)) {
+    return {
+      nodes,
+      edges,
+      changedNodeId: input.id,
+      selectedNodeId: input.id
+    };
+  }
+
   const sameKindCount = nodes.filter((node) => node.kind === input.kind).length + 1;
   const sourceNode = input.sourceNodeId ? findCanvasNode(nodes, input.sourceNodeId) : null;
   const position = input.position ?? {
     x: (sourceNode?.position.x ?? 120) + 340,
     y: sourceNode?.position.y ?? 120 + sameKindCount * 24
   };
-  const id = `${input.kind}-${Date.now().toString(36)}-${sameKindCount}`;
+  const id = input.id ?? `${input.kind}-${Date.now().toString(36)}-${sameKindCount}`;
   const businessType = input.businessType ?? nodeKindBusinessType[input.kind];
-  const title = `${nodeKindLabel[input.kind]} 节点 ${sameKindCount}`;
+  const title = getUniqueNodeTitle(nodes, input.title ?? `${nodeKindLabel[input.kind]} 节点 ${sameKindCount}`);
   const node: CanvasNode = {
     id,
     kind: input.kind,
@@ -227,20 +270,20 @@ function createCanvasNode(nodes: CanvasNode[], edges: CanvasEdge[], input: Canva
     group: input.kind === "video" ? "video" : input.kind === "image" || input.kind === "upload" ? "assets" : "script",
     type: nodeKindLabel[input.kind],
     title,
-    status: input.kind === "upload" ? "uploaded" : "draft",
-    model: nodeKindModel[input.kind],
+    status: input.status ?? (input.kind === "upload" ? "uploaded" : "draft"),
+    model: input.model ?? nodeKindModel[input.kind],
     time: "未运行",
     cost: "0 credits",
-    input: sourceNode ? `引用上游节点：${sourceNode.title}` : "手动创建节点，等待补充输入。",
-    output: input.kind === "upload" ? "等待上传或拖入素材，当前为 mock 上传节点。" : "等待编辑或生成。",
+    input: input.input ?? (sourceNode ? `引用上游节点：${sourceNode.title}` : "手动创建节点，等待补充输入。"),
+    output: input.output ?? (input.kind === "upload" ? "等待上传或拖入素材，可作为下游输入引用。" : "等待编辑或生成。"),
     version: 1,
-    locked: false,
+    locked: input.locked ?? false,
     position,
     parentNodeIds: sourceNode ? [sourceNode.id] : [],
     versions: [],
     primaryVersionId: "",
-    previewClass: input.kind === "text" ? "text" : input.kind,
-    settings: getDefaultNodeSettings(input.kind)
+    previewClass: input.previewClass ?? getDefaultPreviewClass(input.kind),
+    settings: { ...getDefaultNodeSettings(input.kind), ...input.settings }
   };
   const firstVersion = createVersion(node, node.output);
   const nextNode = {
@@ -257,6 +300,52 @@ function createCanvasNode(nodes: CanvasNode[], edges: CanvasEdge[], input: Canva
     edges: nextEdges,
     changedNodeId: nextNode.id,
     selectedNodeId: nextNode.id
+  };
+}
+
+function deleteNodes(nodes: CanvasNode[], edges: CanvasEdge[], nodeIds: string[]): CanvasActionResult {
+  const requestedNodeIds = new Set(nodeIds.filter(Boolean));
+  if (!requestedNodeIds.size) return { nodes, edges };
+
+  const deletedNodeIds = new Set(
+    nodes
+      .filter((node) => requestedNodeIds.has(node.id) && !node.locked && node.status !== "locked")
+      .map((node) => node.id)
+  );
+  if (!deletedNodeIds.size) return { nodes, edges };
+
+  const affectedTargetIds = new Set(
+    edges
+      .filter((edge) => deletedNodeIds.has(edge.source) && !deletedNodeIds.has(edge.target))
+      .map((edge) => edge.target)
+  );
+  const nextEdges = edges.filter((edge) => !deletedNodeIds.has(edge.source) && !deletedNodeIds.has(edge.target));
+  let nextNodes = withSyncedParentRefs(
+    nodes.filter((node) => !deletedNodeIds.has(node.id)),
+    nextEdges
+  ).map((node) => (affectedTargetIds.has(node.id) ? markNodeStale(node, "上游节点已删除") : node));
+
+  affectedTargetIds.forEach((nodeId) => {
+    nextNodes = markDownstreamStale(nextNodes, nextEdges, nodeId, "上游节点已删除");
+  });
+
+  return {
+    nodes: nextNodes,
+    edges: nextEdges,
+    changedNodeId: Array.from(affectedTargetIds).find((nodeId) => !deletedNodeIds.has(nodeId))
+  };
+}
+
+function renameNode(nodes: CanvasNode[], edges: CanvasEdge[], nodeId: string, title: string): CanvasActionResult {
+  const nextTitle = normalizeNodeTitle(title);
+  if (!nextTitle || isTitleTaken(nodes, nextTitle, nodeId)) {
+    return { nodes, edges, changedNodeId: nodeId };
+  }
+
+  return {
+    nodes: nodes.map((node) => (node.id === nodeId ? { ...node, title: nextTitle } : node)),
+    edges,
+    changedNodeId: nodeId
   };
 }
 
@@ -288,15 +377,21 @@ function updateNodeSettings(
   model: string,
   settings?: CanvasNodeSettings
 ): CanvasActionResult {
+  const currentNode = findCanvasNode(nodes, nodeId);
+  const nextTitle = currentNode
+    ? !normalizeNodeTitle(title) || isTitleTaken(nodes, title, nodeId)
+      ? currentNode.title
+      : normalizeNodeTitle(title)
+    : normalizeNodeTitle(title);
   const nextNodes = nodes.map((node) =>
     node.id === nodeId
       ? {
           ...node,
-          title,
+          title: nextTitle,
           output,
           model,
           settings: settings ? { ...node.settings, ...settings } : node.settings,
-          status: (node.locked ? "locked" : "succeeded") as NodeStatus,
+          status: (node.locked ? "locked" : node.status === "uploaded" ? "uploaded" : "succeeded") as NodeStatus,
           staleReason: undefined
         }
       : node
@@ -371,16 +466,30 @@ function runNodeGeneration(nodes: CanvasNode[], edges: CanvasEdge[], nodeId: str
   };
 }
 
-function appendNodeVersion(nodes: CanvasNode[], edges: CanvasEdge[], nodeId: string, content?: string): CanvasActionResult {
+function appendNodeVersion(
+  nodes: CanvasNode[],
+  edges: CanvasEdge[],
+  nodeId: string,
+  content?: string,
+  result?: CanvasGenerationResult
+): CanvasActionResult {
+  if (!result && !content?.trim()) {
+    return failNodeGeneration(nodes, edges, nodeId, "缺少真实生成结果，已阻止写入占位版本。");
+  }
+
   let changedTitle = "上游节点";
   const nextNodes = nodes.map((node) => {
     if (node.id !== nodeId) return node;
 
     changedTitle = node.title;
-    const nextVersion = createVersion(
-      node,
-      content ?? createGeneratedContent(node)
-    );
+    const shouldReplacePlaceholder = isPlaceholderInitialVersion(node);
+    const nextVersion = createVersion(node, result?.content ?? content ?? "", result, shouldReplacePlaceholder ? 1 : undefined);
+    const nextSettings: CanvasNodeSettings = {
+      ...(withoutErrorMessage(node.settings) ?? {}),
+      ...(result?.assetUrl ? { assetUrl: result.assetUrl } : {}),
+      ...(result?.downloadUrl ? { downloadUrl: result.downloadUrl } : {}),
+      ...(result?.providerTaskId ? { providerTaskId: result.providerTaskId } : {})
+    };
 
     return {
       ...node,
@@ -389,7 +498,9 @@ function appendNodeVersion(nodes: CanvasNode[], edges: CanvasEdge[], nodeId: str
       version: nextVersion.version,
       time: nextVersion.time,
       cost: nextVersion.cost,
-      versions: [...node.versions, nextVersion],
+      model: nextVersion.model,
+      settings: nextSettings,
+      versions: shouldReplacePlaceholder ? [nextVersion] : [...node.versions, nextVersion],
       primaryVersionId: nextVersion.id,
       staleReason: undefined
     };
@@ -397,6 +508,26 @@ function appendNodeVersion(nodes: CanvasNode[], edges: CanvasEdge[], nodeId: str
 
   return {
     nodes: markDownstreamStale(nextNodes, edges, nodeId, `${changedTitle} 生成了新主版本`),
+    edges,
+    changedNodeId: nodeId
+  };
+}
+
+function failNodeGeneration(nodes: CanvasNode[], edges: CanvasEdge[], nodeId: string, errorMessage: string): CanvasActionResult {
+  return {
+    nodes: nodes.map((node) =>
+      node.id === nodeId
+        ? {
+            ...node,
+            status: "failed" as NodeStatus,
+            staleReason: errorMessage,
+            settings: {
+              ...node.settings,
+              errorMessage
+            }
+          }
+        : node
+    ),
     edges,
     changedNodeId: nodeId
   };
@@ -418,7 +549,14 @@ function setPrimaryVersion(nodes: CanvasNode[], edges: CanvasEdge[], nodeId: str
       version: version.version,
       time: version.time,
       cost: version.cost,
+      model: version.model,
       primaryVersionId: version.id,
+      settings: {
+        ...(withoutErrorMessage(node.settings) ?? {}),
+        ...(version.assetUrl ? { assetUrl: version.assetUrl } : {}),
+        ...(version.downloadUrl ? { downloadUrl: version.downloadUrl } : {}),
+        ...(version.providerTaskId ? { providerTaskId: version.providerTaskId } : {})
+      },
       staleReason: undefined
     };
   });
@@ -459,6 +597,8 @@ export function applyCanvasAction(
   edges: CanvasEdge[],
   action: CanvasRuntimeAction
 ): CanvasActionResult {
+  if (action.type === "deleteNodes") return deleteNodes(nodes, edges, action.nodeIds);
+  if (action.type === "renameNode") return renameNode(nodes, edges, action.nodeId, action.title);
   if (action.type === "createNode") return createCanvasNode(nodes, edges, action.input);
   if (action.type === "updateNodeContent") return updateNodeContent(nodes, edges, action.nodeId, action.output);
   if (action.type === "updateNodeSettings") {
@@ -467,7 +607,8 @@ export function applyCanvasAction(
   if (action.type === "connectNodes") return connectNodes(nodes, edges, action.source, action.target);
   if (action.type === "disconnectNodes") return disconnectNodes(nodes, edges, action.edgeId);
   if (action.type === "runNodeGeneration") return runNodeGeneration(nodes, edges, action.nodeId);
-  if (action.type === "appendNodeVersion") return appendNodeVersion(nodes, edges, action.nodeId, action.content);
+  if (action.type === "appendNodeVersion") return appendNodeVersion(nodes, edges, action.nodeId, action.content, action.result);
+  if (action.type === "failNodeGeneration") return failNodeGeneration(nodes, edges, action.nodeId, action.errorMessage);
   if (action.type === "setPrimaryVersion") return setPrimaryVersion(nodes, edges, action.nodeId, action.versionId);
   if (action.type === "lockNode") return lockNode(nodes, edges, action.nodeId, action.locked);
   if (action.type === "markNodeStale") return markSingleNodeStale(nodes, edges, action.nodeId, action.reason);
