@@ -1,0 +1,30 @@
+{
+  "platform": "tiktok_cc",
+  "captured_at": "2026-05-24T03:36:36Z",
+  "captured_via": {
+    "device_id": "fake-device-id",
+    "tab_url": "https://ads.tiktok.com/business/creativecenter/inspiration/topads/mobile/en",
+    "matched_request_count": 4
+  },
+  "auth": {
+    "cookie": "fake_cookie=1; lang_type=en",
+    "user_sign": "fake_user_sign_abc123",
+    "timestamp": "1716521796",
+    "web_id": "fake_web_id_7000000000000000000"
+  },
+  "request_template": {
+    "method": "GET",
+    "endpoint": "https://ads.tiktok.com/creative_radar_api/v1/top_ads/v2/list",
+    "headers": {
+      "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      "referer": "https://ads.tiktok.com/business/creativecenter/inspiration/topads/mobile/en",
+      "accept-language": "en-US,en;q=0.9"
+    }
+  },
+  "validation": {
+    "test_url": "https://ads.tiktok.com/creative_radar_api/v1/top_ads/v2/list?period=30&page=1&limit=20&order_by=for_you&country_code=US",
+    "test_status": 200,
+    "test_total_count": 4,
+    "test_first_material_id": "7000000000000000001"
+  }
+}

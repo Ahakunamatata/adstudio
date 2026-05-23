@@ -1,0 +1,60 @@
+{
+  "code": 0,
+  "msg": "OK",
+  "request_id": "fake-req-page-2",
+  "data": {
+    "materials": [
+      {
+        "id": "7000000000000000003",
+        "ad_title": "Test ad three",
+        "brand_name": "BrandX",
+        "cost": 3,
+        "ctr": 0.12,
+        "favorite": false,
+        "industry_key": "label_23125000000",
+        "is_search": true,
+        "like": 75,
+        "objective_key": "campaign_objective_conversions",
+        "video_info": {
+          "vid": "v10033g50000fakeC",
+          "duration": 15.0,
+          "cover": "https://cdn.example.com/cover_C.jpg",
+          "video_url": {
+            "480p": "https://cdn.example.com/C_480p.mp4",
+            "720p": "https://cdn.example.com/C_720p.mp4"
+          },
+          "width": 608,
+          "height": 1080
+        }
+      },
+      {
+        "id": "7000000000000000004",
+        "ad_title": "Test ad four",
+        "brand_name": "BrandY",
+        "cost": 4,
+        "ctr": 0.08,
+        "favorite": false,
+        "industry_key": "label_23125000000",
+        "is_search": true,
+        "like": 20,
+        "objective_key": "campaign_objective_traffic",
+        "video_info": {
+          "vid": "v10033g50000fakeD",
+          "duration": 12.4,
+          "cover": "https://cdn.example.com/cover_D.jpg",
+          "video_url": {
+            "720p": "https://cdn.example.com/D_720p.mp4"
+          },
+          "width": 608,
+          "height": 1080
+        }
+      }
+    ],
+    "pagination": {
+      "page": 2,
+      "size": 20,
+      "has_more": false,
+      "total_count": 4
+    }
+  }
+}

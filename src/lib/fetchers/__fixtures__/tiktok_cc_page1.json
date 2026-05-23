@@ -1,0 +1,64 @@
+{
+  "code": 0,
+  "msg": "OK",
+  "request_id": "fake-req-page-1",
+  "data": {
+    "materials": [
+      {
+        "id": "7000000000000000001",
+        "ad_title": "Test ad one — full resolution set",
+        "brand_name": "",
+        "cost": 1,
+        "ctr": 0.25,
+        "favorite": false,
+        "industry_key": "label_23125000000",
+        "is_search": true,
+        "like": 100,
+        "objective_key": "campaign_objective_traffic",
+        "video_info": {
+          "vid": "v10033g50000fakeA",
+          "duration": 10.026,
+          "cover": "https://cdn.example.com/cover_A.jpg",
+          "video_url": {
+            "360p": "https://cdn.example.com/A_360p.mp4",
+            "480p": "https://cdn.example.com/A_480p.mp4",
+            "540p": "https://cdn.example.com/A_540p.mp4",
+            "720p": "https://cdn.example.com/A_720p.mp4",
+            "1080p": "https://cdn.example.com/A_1080p.mp4"
+          },
+          "width": 608,
+          "height": 1080
+        }
+      },
+      {
+        "id": "7000000000000000002",
+        "ad_title": "Test ad two — no 720p, smoke test for fallback",
+        "brand_name": "AcmeBrand",
+        "cost": 2,
+        "ctr": 0.15,
+        "favorite": false,
+        "industry_key": "label_23125000000",
+        "is_search": true,
+        "like": 50,
+        "objective_key": "campaign_objective_traffic",
+        "video_info": {
+          "vid": "v10033g50000fakeB",
+          "duration": 8.5,
+          "cover": "https://cdn.example.com/cover_B.jpg",
+          "video_url": {
+            "360p": "https://cdn.example.com/B_360p.mp4",
+            "480p": "https://cdn.example.com/B_480p.mp4"
+          },
+          "width": 608,
+          "height": 1080
+        }
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "size": 20,
+      "has_more": true,
+      "total_count": 4
+    }
+  }
+}

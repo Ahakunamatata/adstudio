@@ -28,7 +28,12 @@ import {
 
 // ── enums ──────────────────────────────────────────────────────
 
-export const adSourceEnum = pgEnum("ad_source", ["meta", "tiktok", "google"]);
+export const adSourceEnum = pgEnum("ad_source", [
+  "meta",
+  "tiktok",
+  "google",
+  "tiktok_cc"
+]);
 export const adStatusEnum = pgEnum("ad_status", ["active", "down", "stale"]);
 export const userFeedbackEnum = pgEnum("user_feedback", ["positive", "negative"]);
 
@@ -289,7 +294,8 @@ export const crawlJobStatusEnum = pgEnum("crawl_job_status", [
 export const crawlJobSourceEnum = pgEnum("crawl_job_source", [
   "tiktok",
   "meta",
-  "google"
+  "google",
+  "tiktok_cc"
 ]);
 
 export const crawlJobs = pgTable(

@@ -23,6 +23,7 @@ import { db, schema } from "../../src/lib/db";
 import { fetchTiktokAds } from "../../src/lib/fetchers/tiktokFetcher";
 import { fetchMetaAdLibrary } from "../../src/lib/fetchers/metaAdLibraryFetcher";
 import { fetchGoogleAdsTransparency } from "../../src/lib/fetchers/googleAdsTransparencyFetcher";
+import { fetchTiktokCreativeCenter } from "../../src/lib/fetchers/tiktokCreativeCenterFetcher";
 import { upsertAdRow } from "../../src/lib/db/upsertAd";
 import type { NewAd } from "../../src/lib/db/schema";
 
@@ -58,7 +59,7 @@ async function claimNextJob() {
   const rows = await db.execute<{
     id: string;
     product_id: string | null;
-    source: "tiktok" | "meta" | "google";
+    source: "tiktok" | "meta" | "google" | "tiktok_cc";
     keyword: string;
     region: string;
   }>(sql`
@@ -106,7 +107,7 @@ async function markJobFailed(jobId: string, errorMessage: string) {
 
 // 单次 fetcher 调用，按 source 分发。错误已被分类。
 async function runFetcherOnce(job: {
-  source: "tiktok" | "meta" | "google";
+  source: "tiktok" | "meta" | "google" | "tiktok_cc";
   keyword: string;
   region: string;
 }): Promise<
@@ -170,6 +171,25 @@ async function runFetcherOnce(job: {
         result.error === "rate_limited"
     };
   }
+  if (job.source === "tiktok_cc") {
+    // tiktok_cc 路径不用 keyword（创意中心 list 端点本身就是 trending top ads）
+    // — 这里把 keyword 静默忽略，只用 region。未来如果想按行业过滤再加 industry。
+    const result = await fetchTiktokCreativeCenter({
+      region: job.region,
+      period: 30,
+      limit: 100
+    });
+    if (result.ok) return { ok: true, ads: result.ads };
+    return {
+      ok: false,
+      error: result.error,
+      message: result.message,
+      // session_missing / session_expired 是 ops 问题，重试无意义；
+      // network / rate_limited 可重试
+      retryable:
+        result.error === "network" || result.error === "rate_limited"
+    };
+  }
   return {
     ok: false,
     error: "unsupported",
@@ -180,7 +200,7 @@ async function runFetcherOnce(job: {
 
 async function runJob(job: {
   id: string;
-  source: "tiktok" | "meta" | "google";
+  source: "tiktok" | "meta" | "google" | "tiktok_cc";
   keyword: string;
   region: string;
 }): Promise<void> {
@@ -237,8 +257,8 @@ async function runJob(job: {
             e instanceof Error ? e.message : String(e)
           );
         }
-        // enrich_queue：tiktok 才入队，且没排过队的（拉 detail 比较贵）
-        if (ad.source === "tiktok") {
+        // enrich_queue：tiktok / tiktok_cc 才入队（拉 detail 比较贵）
+        if (ad.source === "tiktok" || ad.source === "tiktok_cc") {
           try {
             await db.execute(sql`
               INSERT INTO enrich_queue (ad_id, status, scheduled_for)
