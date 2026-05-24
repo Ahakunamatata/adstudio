@@ -1,0 +1,62 @@
+{
+  "code": 0,
+  "msg": "OK",
+  "request_id": "fake-req-keyword-skincare",
+  "data": {
+    "materials": [
+      {
+        "id": "7000000000000099001",
+        "ad_title": "New moisturizer for sensitive skincare routine — try it now",
+        "brand_name": "GlowLab",
+        "cost": 5,
+        "ctr": 0.32,
+        "favorite": false,
+        "industry_key": "label_beauty_skincare",
+        "is_search": true,
+        "like": 240,
+        "objective_key": "campaign_objective_conversions",
+        "video_info": {
+          "vid": "v10033g50000fakeKw1",
+          "duration": 14.2,
+          "cover": "https://cdn.example.com/cover_kw1.jpg",
+          "video_url": {
+            "480p": "https://cdn.example.com/kw1_480p.mp4",
+            "720p": "https://cdn.example.com/kw1_720p.mp4"
+          },
+          "width": 608,
+          "height": 1080
+        }
+      },
+      {
+        "id": "7000000000000099002",
+        "ad_title": "Anti-aging skincare serum — visible results in 2 weeks",
+        "brand_name": "DermaPure",
+        "cost": 8,
+        "ctr": 0.21,
+        "favorite": false,
+        "industry_key": "label_beauty_skincare",
+        "is_search": true,
+        "like": 180,
+        "objective_key": "campaign_objective_traffic",
+        "video_info": {
+          "vid": "v10033g50000fakeKw2",
+          "duration": 11.5,
+          "cover": "https://cdn.example.com/cover_kw2.jpg",
+          "video_url": {
+            "360p": "https://cdn.example.com/kw2_360p.mp4",
+            "480p": "https://cdn.example.com/kw2_480p.mp4",
+            "720p": "https://cdn.example.com/kw2_720p.mp4"
+          },
+          "width": 608,
+          "height": 1080
+        }
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "size": 20,
+      "has_more": false,
+      "total_count": 2
+    }
+  }
+}

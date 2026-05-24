@@ -5,8 +5,13 @@
 // 走 fetch，不开浏览器。
 //
 // 端点：GET https://ads.tiktok.com/creative_radar_api/v1/top_ads/v2/list
-//   query: period | page | limit | order_by | country_code
+//   query (browse mode):  period | page | limit | order_by | country_code
+//   query (keyword mode): 上述 + keyword=<word> + search_id=<UUID v4>
 //   headers: cookie / timestamp / user-sign / web-id / anonymous-user-id
+//
+// keyword search 跟 browse 同 endpoint 同 cookies 同 response schema，
+// 只是后端用 keyword 把结果集筛了一遍。search_id 是前端 JS 生成的搜索
+// session ID（同一次 search 的所有分页请求共享同一个 search_id）。
 //
 // 与 metaFetcher.ts 类似：错误一律收敛到 { ok: false, error, message } 形态，
 // 不抛异常，方便 worker / API route 走友好提示路径。
@@ -54,12 +59,23 @@ function pickProxyUrl(): string | null {
   return null;
 }
 
-export type TtCcOrderBy = "for_you";
+// TikTok Creative Center 后端 UI 实测可选的 7 个排序维度
+export type TtCcOrderBy =
+  | "for_you"
+  | "impression"
+  | "ctr"
+  | "play_2s_rate"
+  | "play_6s_rate"
+  | "cvr"
+  | "like";
 
 export type TtCcFetchParams = {
   region: string; // 必填，ISO-3166 alpha-2 e.g. "US" / "JP" / "UK"
-  period?: 7 | 30 | 90 | 180; // 默认 30
-  orderBy?: TtCcOrderBy; // 当前只支持 for_you
+  // 实测 API 只接受 7 / 30 / 180（90 不是合法选项，UI 也不暴露）
+  period?: 7 | 30 | 180; // 默认 30
+  orderBy?: TtCcOrderBy; // 默认 for_you
+  // 留空 = browse 模式（trending top ads）；有值 = keyword search 模式
+  keyword?: string;
   limit?: number; // 总条数上限，默认 100；分页内部循环
   sessionPath?: string; // 不传从 env 读
   signal?: AbortSignal;
@@ -78,7 +94,15 @@ export type TtCcFetchResultOk = {
   ads: NewAd[];
   totalCount: number;
   pageCount: number;
-  raw: { firstPage: unknown; lastPage: unknown };
+  raw: {
+    firstPage: unknown;
+    lastPage: unknown;
+    // 'browse' = trending top ads，'keyword' = 走 keyword search 路径
+    searchMode: "browse" | "keyword";
+    // keyword 模式下落盘当时生成的 UUID，便于后续 debug 追同一次 search
+    // 的多次分页请求；browse 模式下为 undefined
+    searchId?: string;
+  };
 };
 
 export type TtCcFetchResultErr = {
@@ -162,6 +186,8 @@ function buildPageUrl(
     period: number;
     orderBy: TtCcOrderBy;
     page: number;
+    keyword?: string;
+    searchId?: string;
   }
 ): string {
   const url = new URL(session.request_template.endpoint);
@@ -170,6 +196,14 @@ function buildPageUrl(
   url.searchParams.set("limit", String(PAGE_SIZE));
   url.searchParams.set("order_by", params.orderBy);
   url.searchParams.set("country_code", params.region);
+  // keyword 模式：keyword + search_id 一定要一起发；search_id 在调用方
+  // 已经针对整次 fetcher call 固定（多页共享）
+  if (params.keyword && params.keyword.length > 0) {
+    url.searchParams.set("keyword", params.keyword);
+  }
+  if (params.searchId) {
+    url.searchParams.set("search_id", params.searchId);
+  }
   return url.toString();
 }
 
@@ -265,12 +299,21 @@ export async function fetchTiktokCreativeCenter(
   const period = params.period ?? 30;
   const orderBy = params.orderBy ?? "for_you";
   const limit = params.limit ?? DEFAULT_LIMIT;
+  const keyword = params.keyword?.trim();
 
   // ── 1b. proxy ──
   // 整个 fetch 调用复用同一个 ProxyAgent（同进程内 TCP keep-alive）。
   // 没设代理时 proxyAgent = null，下面就是直连。
   const proxyUrl = pickProxyUrl();
   const proxyAgent = proxyUrl ? new ProxyAgent(proxyUrl) : null;
+
+  // ── 1c. search_id ──
+  // 关键：keyword 模式下整次 fetcher call 共享同一个 search_id，
+  // 循环内不能 regenerate。服务端用它把同一次 search 的所有分页请求关联
+  // 起来——每页换 ID 会被认为是新的 search session 导致 pagination 不连续。
+  // crypto.randomUUID() 是 Node 18+ 全局可用，输出标准 UUID v4。
+  const searchId =
+    keyword && keyword.length > 0 ? crypto.randomUUID() : undefined;
 
   // ── 2. paged fetch ──
   const ads: NewAd[] = [];
@@ -285,7 +328,9 @@ export async function fetchTiktokCreativeCenter(
       region: params.region,
       period,
       orderBy,
-      page
+      page,
+      keyword,
+      searchId
     });
 
     let response: Response;
@@ -369,6 +414,11 @@ export async function fetchTiktokCreativeCenter(
     ads,
     totalCount,
     pageCount,
-    raw: { firstPage: firstPageRaw, lastPage: lastPageRaw }
+    raw: {
+      firstPage: firstPageRaw,
+      lastPage: lastPageRaw,
+      searchMode: searchId ? "keyword" : "browse",
+      searchId
+    }
   };
 }
