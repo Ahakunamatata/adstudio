@@ -14,6 +14,8 @@
 // source 区分：本路径产 NewAd.source = 'tiktok_cc'，跟现有 Playwright 路径
 // （source = 'tiktok'）分两个池子，下游 enrich / rank 可以分别策略。
 
+import { ProxyAgent } from "undici";
+
 import type { NewAd } from "@/lib/db/schema";
 import type { TiktokAdItem, TiktokListResponse } from "./types";
 import {
@@ -27,6 +29,30 @@ import {
 const PAGE_SIZE = 20; // TikTok creative_radar_api 单页固定 20
 const INTER_PAGE_SLEEP_MS = 800;
 const DEFAULT_LIMIT = 100;
+
+// 代理选择：
+//   1) TIKTOK_CC_PROXY_URL（这条路径专属，可以跟 Playwright TikTok 走不同代理）
+//   2) TIKTOK_PROXY_URL（跟现有 Playwright TikTok 路径共用住宅代理，对齐 Meta
+//      fetcher 的 fallback 习惯）
+//   3) HTTPS_PROXY（通用 node 兜底）
+//
+// 必须走住宅代理：ECS data center IP（实测 47.77.177.67）会被 TikTok 直接拒
+// 40101（no permission），即使 cookies 有效。Mac + Clash residential exit 同
+// cookies 就 200 OK。
+//
+// 没设代理时直连——保留这个分支让本机 smoke test（mock fetch）跟不需要代理
+// 的环境都能跑。
+function pickProxyUrl(): string | null {
+  const candidates = [
+    process.env.TIKTOK_CC_PROXY_URL,
+    process.env.TIKTOK_PROXY_URL,
+    process.env.HTTPS_PROXY
+  ];
+  for (const v of candidates) {
+    if (typeof v === "string" && v.trim().length > 0) return v.trim();
+  }
+  return null;
+}
 
 export type TtCcOrderBy = "for_you";
 
@@ -240,6 +266,12 @@ export async function fetchTiktokCreativeCenter(
   const orderBy = params.orderBy ?? "for_you";
   const limit = params.limit ?? DEFAULT_LIMIT;
 
+  // ── 1b. proxy ──
+  // 整个 fetch 调用复用同一个 ProxyAgent（同进程内 TCP keep-alive）。
+  // 没设代理时 proxyAgent = null，下面就是直连。
+  const proxyUrl = pickProxyUrl();
+  const proxyAgent = proxyUrl ? new ProxyAgent(proxyUrl) : null;
+
   // ── 2. paged fetch ──
   const ads: NewAd[] = [];
   let firstPageRaw: unknown = null;
@@ -258,12 +290,16 @@ export async function fetchTiktokCreativeCenter(
 
     let response: Response;
     try {
-      response = await fetch(url, {
+      // dispatcher 是 undici 的扩展字段；node 原生 fetch 实际就是 undici，
+      // 运行时认这个 key，但 TS 标准库的 RequestInit 没有，所以做一次窄化扩展。
+      const init: RequestInit & { dispatcher?: ProxyAgent } = {
         method: "GET",
         headers,
         signal: params.signal,
         cache: "no-store"
-      });
+      };
+      if (proxyAgent) init.dispatcher = proxyAgent;
+      response = await fetch(url, init);
     } catch (e) {
       return {
         ok: false,

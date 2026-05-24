@@ -19,6 +19,7 @@
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "react": "latest",
     "react-dom": "latest",
+    "undici": "^8.3.0",
     "zod": "latest"
   },
   "devDependencies": {
