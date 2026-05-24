@@ -31,7 +31,7 @@ function nowIso() {
 type DueRule = {
   id: string;
   product_id: string | null;
-  source: "tiktok" | "meta" | "google";
+  source: "tiktok" | "meta" | "google" | "tiktok_cc";
   keyword: string;
   region: string;
   cadence_hours: number;
@@ -118,7 +118,7 @@ async function main() {
   // ⚠️ 注意：perSource 只列出当前 pending/running > 0 的 source。某个 source
   // 一条 pending 都没有时不在 perSource 里 —— 但它显然 <cap，所以要给它机会。
   // 因此要显式枚举 schema 里的所有 source，而不是 Object.keys(perSource)。
-  const ALL_SOURCES = ["tiktok", "meta", "google"] as const;
+  const ALL_SOURCES = ["tiktok", "meta", "google", "tiktok_cc"] as const;
   const overAllSource = ALL_SOURCES.every(
     (s) => (perSource[s] ?? 0) >= PER_SOURCE_PENDING_CAP
   );

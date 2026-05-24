@@ -25,7 +25,7 @@ const requestSchema = z.object({
     .default(["US"]),
   // 默认 tiktok；Meta 等开通后加
   sources: z
-    .array(z.enum(["tiktok", "meta", "google"]))
+    .array(z.enum(["tiktok", "meta", "google", "tiktok_cc"]))
     .optional()
     .default(["tiktok"])
 });
