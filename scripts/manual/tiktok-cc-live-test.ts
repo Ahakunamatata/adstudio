@@ -68,20 +68,29 @@ async function main() {
     `✅ ok: totalCount=${result.totalCount}, pageCount=${result.pageCount}, ads.length=${result.ads.length}, searchMode=${result.raw.searchMode}${result.raw.searchId ? `, searchId=${result.raw.searchId}` : ""}`
   );
   console.log("");
+  // 重要：video / thumbnail URL 必须完整复制（含 query 参数）才能过 TikTok CDN
+  // 鉴权。之前 .slice(0, 80) 截断后丢 query → 浏览器 Access Denied，误判 video
+  // 链路坏了。现在完整打印；只有 creativeBody 还截（textual content 200+ 字太长）。
+  console.log(
+    "⚠️  video/thumbnail URLs are printed full — copy them complete (with query params) for browser test"
+  );
+  console.log("");
 
+  const BODY_TRUNCATE = 60;
   for (const [i, ad] of result.ads.entries()) {
-    const body = (ad.adCreativeBodies?.[0] ?? "").slice(0, 60);
-    const videoUrl = (ad.videoUrl ?? "").slice(0, 80);
-    const thumbnailUrl = (ad.thumbnailUrl ?? "").slice(0, 80);
+    const fullBody = ad.adCreativeBodies?.[0] ?? "";
+    const bodyTruncated = fullBody.length > BODY_TRUNCATE;
+    const bodyDisplay = bodyTruncated
+      ? `"${fullBody.slice(0, BODY_TRUNCATE)}..." (truncated, full ${fullBody.length} chars)`
+      : `"${fullBody}"`;
+
     console.log(`--- ad #${i + 1} ---`);
     console.log(`  id              : ${ad.id}`);
     console.log(`  source          : ${ad.source}`);
     console.log(`  advertiserName  : ${ad.advertiserName ?? "null"}`);
-    console.log(
-      `  creativeBody[0] : ${body}${body.length >= 60 ? "..." : ""}`
-    );
-    console.log(`  videoUrl        : ${videoUrl}`);
-    console.log(`  thumbnailUrl    : ${thumbnailUrl}`);
+    console.log(`  creativeBody[0] : ${bodyDisplay}`);
+    console.log(`  videoUrl        : ${ad.videoUrl ?? "null"}`);
+    console.log(`  thumbnailUrl    : ${ad.thumbnailUrl ?? "null"}`);
     console.log("");
   }
 }
