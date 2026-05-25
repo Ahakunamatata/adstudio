@@ -53,8 +53,8 @@ const requestSchema = z.object({
   keywords: z.array(z.string().min(1).max(200)).max(20).default([]),
   industry: z.string().max(40).optional(),
   sources: z
-    .array(z.enum(["meta", "tiktok", "google"]))
-    .max(3)
+    .array(z.enum(["meta", "tiktok", "google", "tiktok_cc"]))
+    .max(4)
     .optional(),
   limit: z.number().int().min(1).max(100).default(20),
   // 用户产品介绍 / 痛点，喂给 LLM rerank prompt（向量检索只看 keywords，
@@ -102,7 +102,7 @@ function regionToFlag(region: string | null): string {
 
 type AdSearchRow = {
   id: string;
-  source: "meta" | "tiktok" | "google";
+  source: "meta" | "tiktok" | "google" | "tiktok_cc";
   advertiserName: string | null;
   adCreativeBodies: string[] | null;
   adCreativeTitles: string[] | null;

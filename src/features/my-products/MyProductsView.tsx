@@ -447,7 +447,7 @@ function ScrapedAdsPanel({
     else if (fb === "negative") dislikedCount += 1;
     const src = s.adData?.source;
     if (src === "meta") sourceCount.meta += 1;
-    else if (src === "tiktok") sourceCount.tiktok += 1;
+    else if (src === "tiktok" || src === "tiktok_cc") sourceCount.tiktok += 1;
     else if (src === "google") sourceCount.google += 1;
     else sourceCount.other += 1;
   }
@@ -526,7 +526,12 @@ function ScrapedAdsPanel({
             const fallbackInitial = (d.advertiserName ?? d.title ?? "?").slice(0, 1).toUpperCase();
             // source 徽章：Meta 蓝 / TikTok 黑粉 / Google 绿
             // 优先用 d.source（DB ads.source 原值），fallback 用 scraped.platform 推
-            const sourceKey = d.source ?? (scraped.platform === "Meta" ? "meta" : scraped.platform === "TikTok" ? "tiktok" : "google");
+            const sourceKey = (() => {
+              if (d.source === "meta") return "meta";
+              if (d.source === "tiktok" || d.source === "tiktok_cc") return "tiktok";
+              if (d.source === "google") return "google";
+              return scraped.platform === "Meta" ? "meta" : scraped.platform === "TikTok" ? "tiktok" : "google";
+            })();
             const sourceBadge = sourceKey === "meta" ? "M" : sourceKey === "tiktok" ? "T" : "G";
             const likes = d.pageLikeCount && d.pageLikeCount >= 1000
               ? d.pageLikeCount >= 1_000_000

@@ -2,7 +2,7 @@
 // 的字段映射到这一形态，再调通用 upsertAd() 入库。
 
 export type ScrapedAdRecord = {
-  source: "meta" | "tiktok" | "google";
+  source: "meta" | "tiktok" | "google" | "tiktok_cc";
   sourceId: string;
   advertiserName: string | null;
   advertiserPageId: string | null;

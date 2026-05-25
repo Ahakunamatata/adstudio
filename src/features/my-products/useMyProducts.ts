@@ -94,7 +94,7 @@ type ParseApiInput = {
 
 type MatchedAdFromApi = {
   id: string;
-  source: "meta" | "tiktok" | "google";
+  source: "meta" | "tiktok" | "google" | "tiktok_cc";
   title: string;
   advertiserName: string | null;
   creativeBodies: string[];
@@ -144,7 +144,7 @@ async function fetchCachedMatches(productId: string): Promise<MatchedAdFromApi[]
 async function fetchMatchedAdsFromDb(payload: {
   keywords: string[];
   industry?: string;
-  sources?: Array<"meta" | "tiktok" | "google">;
+  sources?: Array<"meta" | "tiktok" | "google" | "tiktok_cc">;
   limit?: number;
   // LLM rerank 上下文：产品名/介绍/痛点。喂给 Minimax 让它精排 + 写推荐理由 chip。
   productName?: string;
@@ -185,7 +185,11 @@ function dbAdToScraped(
   matchedKeywords: string[]
 ): MyProductScrapedAd {
   const platform: MyProductPlatform =
-    ad.source === "meta" ? "Meta" : ad.source === "tiktok" ? "TikTok" : "Google";
+    ad.source === "meta"
+      ? "Meta"
+      : ad.source === "tiktok" || ad.source === "tiktok_cc"
+        ? "TikTok"
+        : "Google";
   // 语义检索 → 用 API 算的真 cosine score；关键词兜底 → 按位置算降序占位分
   const relevanceScore =
     ad.relevanceScore !== null

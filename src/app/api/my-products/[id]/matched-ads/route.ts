@@ -45,7 +45,7 @@ function toIsoOrNull(value: Date | string | null | undefined): string | null {
 
 type MatchedRow = {
   id: string;
-  source: "meta" | "tiktok" | "google";
+  source: "meta" | "tiktok" | "google" | "tiktok_cc";
   advertiserName: string | null;
   adCreativeBodies: string[] | null;
   adCreativeTitles: string[] | null;
@@ -99,7 +99,14 @@ function shapeRow(row: MatchedRow) {
     regionFlag: regionToFlag(row.region),
     platforms,
     platformLabel:
-      platforms[0] ?? (row.source === "meta" ? "Meta" : row.source),
+      platforms[0] ??
+      (row.source === "meta"
+        ? "Meta"
+        : row.source === "tiktok" || row.source === "tiktok_cc"
+          ? "TikTok"
+          : row.source === "google"
+            ? "Google"
+            : row.source),
     languages: row.languages ?? [],
     landingPageUrl: row.landingPageUrl,
     ctaText,

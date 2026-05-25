@@ -94,14 +94,15 @@ export async function GET(_request: Request, context: RouteContext) {
       summary.adsNewTotal += job.adsNew ?? 0;
 
       // by source
-      const src = jobsBySource[job.source];
-      if (src) {
-        src.total += 1;
-        if (job.status === "pending") src.pending += 1;
-        else if (job.status === "running") src.running += 1;
-        else if (job.status === "completed") src.completed += 1;
-        else if (job.status === "failed") src.failed += 1;
-        src.adsNew += job.adsNew ?? 0;
+      const srcKey = job.source === "tiktok_cc" ? "tiktok" : job.source;
+      const bucket = jobsBySource[srcKey];
+      if (bucket) {
+        bucket.total += 1;
+        if (job.status === "pending") bucket.pending += 1;
+        else if (job.status === "running") bucket.running += 1;
+        else if (job.status === "completed") bucket.completed += 1;
+        else if (job.status === "failed") bucket.failed += 1;
+        bucket.adsNew += job.adsNew ?? 0;
       }
     }
 

@@ -313,7 +313,7 @@ export const dbAdInlineSchema = z.object({
   region: z.string().nullable().optional(),
   regionFlag: z.string().optional(),
   // ads.source 原值，给前端画 source badge（"meta" / "tiktok" / "google"）
-  source: z.enum(["meta", "tiktok", "google"]).optional(),
+  source: z.enum(["meta", "tiktok", "google", "tiktok_cc"]).optional(),
   // publisher_platforms[0] → display 名（"Facebook" / "Instagram" / "TikTok"）
   platformLabel: z.string().optional(),
   thumbnailUrl: z.string().nullable().optional(),

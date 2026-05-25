@@ -27,7 +27,7 @@ const requestSchema = z.object({
   sources: z
     .array(z.enum(["tiktok", "meta", "google", "tiktok_cc"]))
     .optional()
-    .default(["tiktok"])
+    .default(["tiktok", "tiktok_cc"])
 });
 
 type RouteContext = { params: Promise<{ id: string }> };

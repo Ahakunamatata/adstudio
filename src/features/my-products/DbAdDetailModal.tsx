@@ -24,9 +24,12 @@ export function DbAdDetailModal({ scraped, onClose, onCloneInAgent }: DbAdDetail
   if (!scraped?.adData) return null;
   const d = scraped.adData;
 
-  const sourceKey =
-    d.source ??
-    (scraped.platform === "Meta" ? "meta" : scraped.platform === "TikTok" ? "tiktok" : "google");
+  const sourceKey = (() => {
+    if (d.source === "meta") return "meta";
+    if (d.source === "tiktok" || d.source === "tiktok_cc") return "tiktok";
+    if (d.source === "google") return "google";
+    return scraped.platform === "Meta" ? "meta" : scraped.platform === "TikTok" ? "tiktok" : "google";
+  })();
   const sourceLabel = sourceKey === "meta" ? "Meta" : sourceKey === "tiktok" ? "TikTok" : "Google";
   const sourceBadgeChar = sourceKey === "meta" ? "M" : sourceKey === "tiktok" ? "T" : "G";
 
